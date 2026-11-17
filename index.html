@@ -1025,27 +1025,27 @@ document.addEventListener('submit',function(e){
     shopCat=val('cat')||CATS[0];
     var sv=shopVisNow();
     state.shop.unshift({id:uid(),ts:Date.now(),text:val('text'),cat:shopCat,by:state.me,done:false,vis:sv.length<PEOPLE.length?sv:undefined});
-    commit();refocus('shop-text');
+    f.reset();commit();refocus('shop-text');
   }else if(kind==='wish'){
     if(!val('text'))return;
     state.wishes.push({id:uid(),ts:Date.now(),text:val('text'),by:state.me});
-    commit();refocus('wish-text');
+    f.reset();commit();refocus('wish-text');
   }else if(kind==='note'){
     if(!val('text'))return;
     if(!state.notes[state.me])state.notes[state.me]=[];
     state.notes[state.me].unshift({id:uid(),ts:Date.now(),text:val('text')});
-    commit();refocus('note-text');
+    f.reset();commit();refocus('note-text');
   }else if(kind==='todo'){
     if(!val('text'))return;
     sitOf(f.dataset.key).todo.push({id:uid(),text:val('text'),done:false});
-    commit();refocus('todo-new-'+f.dataset.key);
+    f.reset();commit();refocus('todo-new-'+f.dataset.key);
   }else if(kind==='bp'){
     var sys=Number(val('sys')),dia=Number(val('dia')),pulse=Number(val('pulse'));
     if(!(sys>=60&&sys<=260)||!(dia>=30&&dia<=160))return fail('Bitte trag den oberen und den unteren Wert ein, zum Beispiel 130 und 85.');
     if(val('pulse')&&!(pulse>=30&&pulse<=220))return fail('Der Puls sollte zwischen 30 und 220 liegen.');
     var now=new Date();
     bpOf(state.me).rows.push({id:uid(),date:today,time:z(now.getHours())+':'+z(now.getMinutes()),sys:sys,dia:dia,pulse:val('pulse')?pulse:0});
-    commit();toast('Messung eingetragen.');
+    f.reset();commit();toast('Messung eingetragen.');
   }else if(kind==='task'){
     var tw=fd.getAll('who');
     if(!val('title'))return fail('Bitte trag ein, was zu erledigen ist.');
