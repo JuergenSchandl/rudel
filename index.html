@@ -3,11 +3,11 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Rudel</title>
+<title>DJNP</title>
 <meta name="theme-color" content="#2B5E45">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-title" content="Rudel">
+<meta name="apple-mobile-web-app-title" content="DJNP">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icon-192.png">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
@@ -277,7 +277,7 @@ button.sync{background:none;border:0;padding:0;cursor:pointer;text-decoration:un
 <body>
 <div class="app">
   <header class="top">
-    <div class="brand">Rudel</div>
+    <div class="brand">DJNP</div>
     <div class="me" id="me"></div>
   </header>
   <main id="main" tabindex="-1"></main>
@@ -290,7 +290,7 @@ button.sync{background:none;border:0;padding:0;cursor:pointer;text-decoration:un
     <a href="#mehr" data-view="mehr"><i><svg class="fill" viewBox="0 0 24 24" aria-hidden="true"><circle cx="5.500" cy="12" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="18.500" cy="12" r="2"/></svg></i>Mehr</a>
   </nav>
 </div>
-<div class="gate" id="gate"><div class="gate-box" id="gate-box"><h1>Rudel</h1><p>Einen Moment …</p></div></div>
+<div class="gate" id="gate"><div class="gate-box" id="gate-box"><h1>DJNP</h1><p>Einen Moment …</p></div></div>
 <div class="sheet-wrap" id="sheet" hidden></div>
 <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
 
@@ -739,7 +739,7 @@ function bpPdf(name,rows,madeOn){
   function page(){
     if(c)pages.push(c);
     c='';y=786;
-    c+='0.4 g\n';txt(56,40,'Blutdruck-Protokoll von '+name+', erstellt am '+dmy(madeOn)+' mit der Rudel Familien-App. Seite '+(pages.length+1),8,false);c+='0 g\n';
+    c+='0.4 g\n';txt(56,40,'Blutdruck-Protokoll von '+name+', erstellt am '+dmy(madeOn)+' mit der DJNP Familien-App. Seite '+(pages.length+1),8,false);c+='0 g\n';
   }
   var a=0,b=0;rows.forEach(function(r){a+=r.sys;b+=r.dia;});
   page();
@@ -789,7 +789,7 @@ function exportPdf(){
 function icsEsc(t){return String(t||'').replace(/\\/g,'\\\\').replace(/;/g,'\\;').replace(/,/g,'\\,').replace(/\r?\n/g,'\\n');}
 function icsFor(a){
   var now=new Date(),stamp=now.getUTCFullYear()+z(now.getUTCMonth()+1)+z(now.getUTCDate())+'T'+z(now.getUTCHours())+z(now.getUTCMinutes())+z(now.getUTCSeconds())+'Z';
-  var L=['BEGIN:VCALENDAR','VERSION:2.0','PRODID:-//Rudel//Familien-App//DE','CALSCALE:GREGORIAN','METHOD:PUBLISH','BEGIN:VEVENT','UID:'+a.id+'@rudel','DTSTAMP:'+stamp];
+  var L=['BEGIN:VCALENDAR','VERSION:2.0','PRODID:-//DJNP//Familien-App//DE','CALSCALE:GREGORIAN','METHOD:PUBLISH','BEGIN:VEVENT','UID:'+a.id+'@rudel','DTSTAMP:'+stamp];
   if(a.time){
     var hm=a.time.split(':').map(Number),st=toDate(a.date);st.setHours(hm[0],hm[1],0,0);
     var en=new Date(st.getTime()+36e5),f=function(x){return x.getFullYear()+z(x.getMonth()+1)+z(x.getDate())+'T'+z(x.getHours())+z(x.getMinutes())+'00';};
@@ -1232,7 +1232,7 @@ function subscribe(){
 }
 
 var gate=document.getElementById('gate'),gateBox=document.getElementById('gate-box');
-function showGate(html){gateBox.innerHTML='<h1>Rudel</h1>'+html;gate.hidden=false;}
+function showGate(html){gateBox.innerHTML='<h1>DJNP</h1>'+html;gate.hidden=false;}
 function showLogin(msg){
   showGate('<p>Die Familien-App. Bitte melde dich an.</p><form data-form="login" novalidate>'+
     '<label class="l" for="login-email">E-Mail<input class="field" type="email" id="login-email" name="email" autocomplete="username" inputmode="email"></label>'+
@@ -1440,11 +1440,11 @@ function checkPush(){
 function pushSection(){
   var h='<section class="sec"><div class="sec-head"><h2>Mitteilungen aufs Handy</h2></div><div class="sit">';
   if(isIos()&&!isStandalone()){
-    h+='<p>Am iPhone kommen Mitteilungen nur, wenn Rudel als App am Home-Bildschirm liegt: in <b>Safari</b> öffnen, unten auf Teilen tippen, dann „Zum Home-Bildschirm“. Danach Rudel über das Icon öffnen und hier einschalten.</p>';
+    h+='<p>Am iPhone kommen Mitteilungen nur, wenn DJNP als App am Home-Bildschirm liegt: in <b>Safari</b> öffnen, unten auf Teilen tippen, dann „Zum Home-Bildschirm“. Danach DJNP über das Icon öffnen und hier einschalten.</p>';
   }else if(!pushSupported()){
-    h+='<p>Dieser Browser kann keine Mitteilungen empfangen. Am Handy: Android mit Chrome, iPhone mit Safari und Rudel am Home-Bildschirm.</p>';
+    h+='<p>Dieser Browser kann keine Mitteilungen empfangen. Am Handy: Android mit Chrome, iPhone mit Safari und DJNP am Home-Bildschirm.</p>';
   }else if(Notification.permission==='denied'){
-    h+='<p>Mitteilungen sind für Rudel auf diesem Gerät blockiert. Erlaube sie in den Einstellungen des Handys bei Rudel (Android: auch in Chrome unter Website-Einstellungen), dann öffne die App neu.</p>';
+    h+='<p>Mitteilungen sind für DJNP auf diesem Gerät blockiert. Erlaube sie in den Einstellungen des Handys bei DJNP (Android: auch in Chrome unter Website-Einstellungen), dann öffne die App neu.</p>';
   }else if(pushInfo.on){
     h+='<p><span class="pill ok">Eingeschaltet</span> Dieses Gerät bekommt Erinnerungen für alle Aufgaben, bei denen du zuständig bist.</p>'+
       '<label class="row" style="padding:0;border:0;cursor:pointer" for="push-changes"><input class="check" type="checkbox" id="push-changes"'+(changesWanted()?' checked':'')+'><span class="grow">Auch Bescheid geben, wenn die anderen etwas eintragen oder ändern<span class="s" style="display:block">Termine, Einkauf, Essen, Aufgaben, Wer ist wo, Dokumente. Mehrere Änderungen kommen als eine Nachricht.</span></span></label>'+
@@ -1460,7 +1460,7 @@ function setPushBusy(b){pushInfo.busy=b;if(view==='aufgaben')render(true);}
 function enablePush(){
   setPushBusy(true);
   Notification.requestPermission().then(function(p){
-    if(p!=='granted')throw {msg:'Ohne Erlaubnis kann Rudel keine Mitteilungen schicken.'};
+    if(p!=='granted')throw {msg:'Ohne Erlaubnis kann DJNP keine Mitteilungen schicken.'};
     return fetch(FN+'?key',{headers:{apikey:CFG.key}}).then(function(r){if(!r.ok)throw {msg:'Der Erinnerungsdienst ist gerade nicht erreichbar.'};return r.json();});
   }).then(function(k){
     return swReady().then(function(reg){

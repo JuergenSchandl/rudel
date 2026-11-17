@@ -1,4 +1,4 @@
-// Rudel: Erinnerungen aufs Handy
+// DJNP: Erinnerungen aufs Handy
 // Läuft alle 15 Minuten (Zeitplan in der Datenbank) und schickt fällige Aufgaben-Erinnerungen
 // an die Handys der zuständigen Personen. Jede Erinnerung geht nur einmal raus.
 // Die Schlüssel für die Mitteilungen erzeugt der Dienst beim ersten Lauf selbst
@@ -110,7 +110,7 @@ export function changeLines(author, changes) {
 }
 export function messageFor(author, lines) {
   const shown = lines.slice(0, 4), more = lines.length - shown.length;
-  return { title: `Rudel · ${NAMES[author] || ""}`, body: shown.join("\n") + (more > 0 ? `\nund ${more} weitere Änderung${more === 1 ? "" : "en"}` : "") };
+  return { title: `DJNP · ${NAMES[author] || ""}`, body: shown.join("\n") + (more > 0 ? `\nund ${more} weitere Änderung${more === 1 ? "" : "en"}` : "") };
 }
 
 // ---- service ----
@@ -155,7 +155,7 @@ if (typeof Deno !== "undefined") Deno.serve(async (req) => {
     const { data: m } = await sb.from("members").select("person").eq("user_id", u.user.id).maybeSingle();
     if (!m) return json({ error: "Keiner Person zugeordnet" }, 403);
     const sent = await sendTo(sb, [m.person], {
-      title: "Rudel", body: "Mitteilungen sind eingeschaltet. So kommen eure Erinnerungen an.", url: APP + "#aufgaben", tag: "rudel-test",
+      title: "DJNP", body: "Mitteilungen sind eingeschaltet. So kommen eure Erinnerungen an.", url: APP + "#aufgaben", tag: "rudel-test",
     });
     return json({ sent });
   }
