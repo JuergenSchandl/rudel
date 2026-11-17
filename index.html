@@ -1174,6 +1174,7 @@ function pushDiff(){
   var p=pending(state,last);
   if(!p.ups.length&&!p.dels.length){if(syncMode==='saving'||syncMode==='error')setSync('');return;}
   pushing=true;setSync('saving');
+  var notes=changeNotes(p,last);
   var sig={},stamp=new Date().toISOString();
   var rows=p.ups.map(function(r){sig[r.id]=canon(r);return {id:r.id,kind:r.kind,data:r.data,owner:r.owner,private:r.private,visible_to:r.visible_to,updated_by:CLIENT,updated_at:stamp};});
   var step=rows.length?sb.from('items').upsert(rows):Promise.resolve({error:null});
@@ -1184,6 +1185,7 @@ function pushDiff(){
   }).then(function(res){
     if(res.error)throw res.error;
     p.dels.forEach(function(id){delete last[id];});
+    queueNotes(notes);
     pushing=false;saveCache();setSync('');
     if(pushAgain){pushAgain=false;pushDiff();}
   }).catch(function(e){
@@ -1445,6 +1447,7 @@ function pushSection(){
     h+='<p>Mitteilungen sind für Rudel auf diesem Gerät blockiert. Erlaube sie in den Einstellungen des Handys bei Rudel (Android: auch in Chrome unter Website-Einstellungen), dann öffne die App neu.</p>';
   }else if(pushInfo.on){
     h+='<p><span class="pill ok">Eingeschaltet</span> Dieses Gerät bekommt Erinnerungen für alle Aufgaben, bei denen du zuständig bist.</p>'+
+      '<label class="row" style="padding:0;border:0;cursor:pointer" for="push-changes"><input class="check" type="checkbox" id="push-changes"'+(changesWanted()?' checked':'')+'><span class="grow">Auch Bescheid geben, wenn die anderen etwas eintragen oder ändern<span class="s" style="display:block">Termine, Einkauf, Essen, Aufgaben, Wer ist wo, Dokumente. Mehrere Änderungen kommen als eine Nachricht.</span></span></label>'+
       '<div class="acts" style="margin-top:0"><button type="button" class="btn small" data-act="push-test"'+(pushInfo.busy?' disabled':'')+'>Test-Mitteilung schicken</button><button type="button" class="btn small ghost" data-act="push-off"'+(pushInfo.busy?' disabled':'')+'>Ausschalten</button></div>';
   }else{
     h+='<p>Schalte Mitteilungen ein, damit du Bescheid bekommst, wenn eine deiner Aufgaben fällig wird. Das gilt für dieses Gerät, jedes Handy schaltet es selbst ein.</p>'+
@@ -1466,7 +1469,7 @@ function enablePush(){
       });
     });
   }).then(function(s){
-    return Promise.resolve(sb.from('push_subs').upsert([{endpoint:s.endpoint,person:state.me,sub:s.toJSON()}])).then(function(r){
+    return Promise.resolve(sb.from('push_subs').upsert([{endpoint:s.endpoint,person:state.me,sub:s.toJSON(),changes:changesWanted()}])).then(function(r){
       if(r.error){s.unsubscribe();throw {msg:'Das Gerät konnte nicht angemeldet werden.'};}
     });
   }).then(function(){
@@ -1506,6 +1509,65 @@ document.addEventListener('click',function(e){
 /* a phone that is signed out must not keep getting someone's reminders */
 var signOutPlain=signOut;
 signOut=function(){disablePush(true).then(signOutPlain,signOutPlain);};
+
+/* ---------- tell the others about my changes ----------
+   After my changes are saved, the app waits a few seconds for more and then asks the
+   reminder service to send one short message to everyone else who can see them. */
+var NOTE_KINDS={appt:1,shop:1,meal:1,task:1,away:1,doc:1,wish:1};
+var noteQueue=[],noteTimer=null;
+function changeNotes(p,lastMap){
+  var out=[];
+  p.ups.forEach(function(r){
+    if(!NOTE_KINDS[r.kind]||r.private)return;
+    var prev=null;try{prev=lastMap[r.id]?JSON.parse(lastMap[r.id]):null;}catch(e){}
+    if(!prev){out.push({id:r.id,action:'neu'});return;}
+    var a=prev.data||{},b=r.data||{};
+    if(r.kind==='shop')return;                       /* ticking off groceries stays quiet */
+    if(r.kind==='task'&&!a.done&&b.done){out.push({id:r.id,action:'erledigt'});return;}
+    if(r.kind==='meal'&&canon(a.inv||{})!==canon(b.inv||{})&&(b.inv||{})[state.me]&&b.by!==state.me){out.push({id:r.id,action:'antwort'});return;}
+    if((b.photos||[]).length>(a.photos||[]).length){out.push({id:r.id,action:'foto'});return;}
+    var strip=function(x){var c=JSON.parse(JSON.stringify(x));delete c.done;delete c.ts;delete c.listed;delete c.photos;return canon(c);};
+    if(strip(a)!==strip(b))out.push({id:r.id,action:'geändert'});
+  });
+  p.dels.forEach(function(id){
+    var prev=null;try{prev=lastMap[id]?JSON.parse(lastMap[id]):null;}catch(e){}
+    if(!prev||!NOTE_KINDS[prev.kind]||prev.private||prev.kind==='shop'||prev.kind==='wish')return;
+    out.push({id:id,action:'gelöscht',kind:prev.kind,data:prev.data,visible_to:prev.visible_to||null});
+  });
+  return out;
+}
+function queueNotes(list){
+  if(!list||!list.length)return;
+  list.forEach(function(n){
+    var i=noteQueue.findIndex(function(x){return x.id===n.id;});
+    if(i<0)noteQueue.push(n);
+    else if(noteQueue[i].action==='neu'&&n.action==='gelöscht')noteQueue.splice(i,1);   /* never seen by the others: say nothing */
+    else if(noteQueue[i].action==='neu')return;                                        /* still "neu" for the others */
+    else noteQueue[i]=n;
+  });
+  clearTimeout(noteTimer);noteTimer=setTimeout(flushNotes,6000);
+}
+function flushNotes(){
+  clearTimeout(noteTimer);noteTimer=null;
+  if(!noteQueue.length||!sb)return;
+  var batch=noteQueue;noteQueue=[];
+  Promise.resolve(sb.auth.getSession()).then(function(r){
+    var tok=r&&r.data&&r.data.session?r.data.session.access_token:'';
+    if(!tok)return;
+    return fetch(FN+'?changes',{method:'POST',keepalive:true,headers:{apikey:CFG.key,Authorization:'Bearer '+tok,'Content-Type':'application/json'},body:JSON.stringify({changes:batch})});
+  }).catch(function(e){if(window.console)console.error('Benachrichtigung',e);});
+}
+document.addEventListener('visibilitychange',function(){if(document.visibilityState==='hidden')flushNotes();});
+function changesWanted(){try{return localStorage.getItem(KEY+':changes')!=='0';}catch(e){return true;}}
+function setChangesWanted(on){
+  try{localStorage.setItem(KEY+':changes',on?'1':'0');}catch(e){}
+  swReady().then(function(reg){return reg.pushManager.getSubscription();}).then(function(s){
+    if(!s)return;
+    return Promise.resolve(sb.from('push_subs').update({changes:on}).eq('endpoint',s.endpoint));
+  }).then(function(){toast(on?'Du bekommst Bescheid, wenn die anderen etwas ändern.':'Keine Mitteilungen mehr bei Änderungen der anderen.');},function(){toast('Das hat nicht geklappt. Bitte nochmal versuchen.');});
+}
+document.addEventListener('change',function(e){if(e.target&&e.target.id==='push-changes')setChangesWanted(e.target.checked);});
+
 checkPush();
 
 })();

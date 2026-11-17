@@ -49,6 +49,70 @@ export function dueReminders(rows, today) {
   return out;
 }
 
+// ---- messages about changes (pure, also used by the tests) ----
+const NAMES = { d: "Dagmar", j: "Jürgen", n: "Nina", p: "Philip" };
+const ALL = ["d", "j", "n", "p"];
+const WD = ["So", "Mo", "Di", "Mi", "Do", "Fr", "Sa"];
+function when(date, time) {
+  if (!date) return "";
+  const [y, m, d] = date.split("-").map(Number);
+  const wd = WD[new Date(Date.UTC(y, m - 1, d)).getUTCDay()];
+  return `${wd} ${d}.${m}.` + (time ? `, ${time}` : "");
+}
+export function canSee(row, person) {
+  if (!row) return false;
+  if (row.owner === person) return true;
+  return !row.private && (!row.visible_to || row.visible_to.includes(person));
+}
+function audience(row) {
+  if (row.private) return [];
+  return row.visible_to && row.visible_to.length ? row.visible_to : ALL;
+}
+// changes: [{action, row:{kind,data,private,visible_to,owner}}]  ->  {person: [lines]}
+export function changeLines(author, changes) {
+  const per = {};
+  const add = (who, line) => { for (const p of who) if (p !== author) (per[p] = per[p] || []).push(line); };
+  const shop = {};
+  for (const c of changes) {
+    const r = c.row, d = r.data || {}, who = audience(r), a = c.action;
+    if (r.kind === "shop") { if (a === "neu") for (const p of who) if (p !== author) (shop[p] = shop[p] || []).push(d.text); continue; }
+    if (r.kind === "appt") {
+      const t = `${d.title}, ${when(d.date, d.time)}`;
+      add(who, a === "neu" ? `Neuer Termin: ${t}` : a === "gelöscht" ? `Termin gelöscht: ${t}` : `Termin geändert: ${t}`);
+    } else if (r.kind === "meal") {
+      const t = `${d.dish}, ${when(d.date, d.time)}`;
+      if (a === "antwort") {
+        const ans = (d.inv || {})[author];
+        if (d.by && d.by !== author) add([d.by], `${ans === "ja" ? "Kommt" : ans === "nein" ? "Kann nicht" : "Antwort"} zum Essen: ${t}`);
+        continue;
+      }
+      const invited = Object.keys(d.inv || {});
+      if (a === "neu") {
+        add(who.filter((p) => !invited.includes(p)), `Essen geplant: ${t}`);
+        add(invited, `Einladung zum Essen: ${t}`);
+      } else add(who, a === "foto" ? `Neues Foto vom Essen: ${d.dish}` : a === "gelöscht" ? `Essen abgesagt: ${t}` : `Essen geändert: ${t}`);
+    } else if (r.kind === "task") {
+      const due = d.due ? `, fällig ${when(d.due)}` : "";
+      add(who, a === "neu" ? `Neue Aufgabe: ${d.title}${due}` : a === "erledigt" ? `Erledigt: ${d.title}` : a === "gelöscht" ? `Aufgabe gelöscht: ${d.title}` : `Aufgabe geändert: ${d.title}${due}`);
+    } else if (r.kind === "away") {
+      const names = (d.who || []).map((p) => NAMES[p]).filter(Boolean).join(" und ");
+      const t = `${names}: ${d.place || d.label}, ${when(d.from)} bis ${when(d.to)}`;
+      add(who, a === "neu" ? `Unterwegs: ${t}` : a === "gelöscht" ? `Abwesenheit gelöscht: ${t}` : `Abwesenheit geändert: ${t}`);
+    } else if (r.kind === "doc") {
+      const t = d.kind + (d.title ? `: ${d.title}` : "");
+      add(who, a === "neu" ? `Neues Dokument: ${t}` : a === "foto" ? `Neue Datei bei: ${t}` : a === "gelöscht" ? `Dokument gelöscht: ${t}` : `Dokument geändert: ${t}`);
+    } else if (r.kind === "wish" && a === "neu") {
+      add(who, `Essenswunsch: ${d.text}`);
+    }
+  }
+  for (const p of Object.keys(shop)) (per[p] = per[p] || []).unshift(`Einkauf: ${shop[p].join(", ")}`);
+  return per;
+}
+export function messageFor(author, lines) {
+  const shown = lines.slice(0, 4), more = lines.length - shown.length;
+  return { title: `Rudel · ${NAMES[author] || ""}`, body: shown.join("\n") + (more > 0 ? `\nund ${more} weitere Änderung${more === 1 ? "" : "en"}` : "") };
+}
+
 // ---- service ----
 async function vapidKeys(sb) {
   const { data } = await sb.from("push_keys").select("public_key, private_key").eq("id", 1).maybeSingle();
@@ -58,8 +122,10 @@ async function vapidKeys(sb) {
   const again = await sb.from("push_keys").select("public_key, private_key").eq("id", 1).single();
   return again.data;
 }
-async function sendTo(sb, people, msg) {
-  const { data: subs } = await sb.from("push_subs").select("endpoint, sub").in("person", people);
+async function sendTo(sb, people, msg, onlyChanges = false) {
+  let q = sb.from("push_subs").select("endpoint, sub").in("person", people);
+  if (onlyChanges) q = q.eq("changes", true);
+  const { data: subs } = await q;
   let sent = 0;
   for (const s of subs || []) {
     try {
@@ -92,6 +158,35 @@ if (typeof Deno !== "undefined") Deno.serve(async (req) => {
       title: "Rudel", body: "Mitteilungen sind eingeschaltet. So kommen eure Erinnerungen an.", url: APP + "#aufgaben", tag: "rudel-test",
     });
     return json({ sent });
+  }
+
+  if (url.searchParams.has("changes")) {
+    const token = (req.headers.get("Authorization") || "").replace(/^Bearer\s+/i, "");
+    const { data: u } = await sb.auth.getUser(token);
+    if (!u || !u.user) return json({ error: "Nicht angemeldet" }, 401);
+    const { data: m } = await sb.from("members").select("person").eq("user_id", u.user.id).maybeSingle();
+    if (!m) return json({ error: "Keiner Person zugeordnet" }, 403);
+    const author = m.person;
+    let body = {};
+    try { body = await req.json(); } catch (_) { body = {}; }
+    const list = (Array.isArray(body.changes) ? body.changes : []).slice(0, 50);
+    const ids = list.filter((c) => c.action !== "gelöscht").map((c) => String(c.id));
+    const { data: rows } = ids.length ? await sb.from("items").select("id, kind, data, owner, private, visible_to").in("id", ids) : { data: [] };
+    const byId = Object.fromEntries((rows || []).map((r) => [r.id, r]));
+    const changes = [];
+    for (const c of list) {
+      if (c.action === "gelöscht") {
+        // the entry is gone; the app sends what it last knew about it
+        if (c.kind && c.data) changes.push({ action: c.action, row: { kind: c.kind, data: c.data, private: false, visible_to: Array.isArray(c.visible_to) ? c.visible_to : null } });
+      } else if (canSee(byId[c.id], author)) changes.push({ action: c.action, row: byId[c.id] });
+    }
+    const per = changeLines(author, changes);
+    let sent = 0;
+    for (const p of Object.keys(per)) {
+      const msg = messageFor(author, per[p]);
+      sent += await sendTo(sb, [p], { ...msg, url: APP, tag: "rudel-aenderung-" + author }, true);
+    }
+    return json({ people: Object.keys(per).length, sent });
   }
 
   const { day, hour } = viennaNow();
