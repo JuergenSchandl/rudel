@@ -1,6 +1,6 @@
-/* Hält die App startfähig, wenn gerade kein Netz da ist.
+/* Hält die App startfähig, wenn gerade kein Netz da ist, und zeigt Erinnerungen an.
    Online wird immer zuerst die neueste Version geladen, damit Änderungen sofort ankommen. */
-const CACHE = 'rudel-shell-v3';
+const CACHE = 'rudel-shell-v4';
 self.addEventListener('install', () => self.skipWaiting());
 self.addEventListener('activate', (e) => e.waitUntil(self.clients.claim()));
 self.addEventListener('fetch', (e) => {
@@ -16,4 +16,25 @@ self.addEventListener('fetch', (e) => {
       return res;
     }).catch(() => caches.match(req, { ignoreSearch: true }).then((hit) => hit || caches.match('./')))
   );
+});
+self.addEventListener('push', (e) => {
+  let m = {};
+  try { m = e.data ? e.data.json() : {}; } catch (_) { m = { body: e.data ? e.data.text() : '' }; }
+  e.waitUntil(self.registration.showNotification(m.title || 'Rudel', {
+    body: m.body || '',
+    icon: 'icon-192.png',
+    badge: 'icon-192.png',
+    tag: m.tag || undefined,
+    data: { url: m.url || self.registration.scope },
+  }));
+});
+self.addEventListener('notificationclick', (e) => {
+  e.notification.close();
+  const target = (e.notification.data && e.notification.data.url) || self.registration.scope;
+  e.waitUntil(self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((list) => {
+    for (const c of list) {
+      if (c.url.startsWith(self.registration.scope) && 'focus' in c) { c.navigate(target).catch(() => {}); return c.focus(); }
+    }
+    return self.clients.openWindow(target);
+  }));
 });

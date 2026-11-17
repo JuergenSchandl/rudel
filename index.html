@@ -189,6 +189,9 @@ button.sync{background:none;border:0;padding:0;cursor:pointer;text-decoration:un
 .photos{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}
 .ph{width:64px;height:64px;border-radius:10px;overflow:hidden;border:1px solid var(--line);padding:0;background:var(--bg);cursor:pointer;flex:none}
 .ph img{width:100%;height:100%;object-fit:cover;display:block}
+.ph.pdf{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;background:var(--warn-bg);color:var(--warn);padding:4px}
+.ph.pdf b{font-size:.8rem}
+.ph.pdf small{font-size:.6rem;line-height:1.1;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--ink)}
 .ph-wait{display:block;width:100%;height:100%;background:color-mix(in srgb,var(--ink) 8%,transparent)}
 .viewer img{display:block;width:100%;height:auto;max-height:62vh;object-fit:contain;border-radius:12px;background:var(--bg)}
 .doc-acts{display:flex;flex-direction:column;gap:4px;align-items:flex-end}
@@ -300,7 +303,8 @@ button.sync{background:none;border:0;padding:0;cursor:pointer;text-decoration:un
 var PEOPLE=[{id:'d',name:'Dagmar'},{id:'j',name:'Jürgen'},{id:'n',name:'Nina'},{id:'p',name:'Philip'}];
 var PETS=[{name:'Ivie',kind:'Hund'},{name:'Frida',kind:'Hund'},{name:'Lilli',kind:'Schwein'}];
 var CATS=['Lebensmittel','Tiere','Haushalt'];
-var DOCKINDS=['Reisepass','Personalausweis','Führerschein','E-Card','Heimtierausweis','Sonstiges'];
+var DOCKINDS=['Flugbuchung','Hotel','Reiseunterlagen','Reisepass','Personalausweis','Führerschein','E-Card','Versicherung','Heimtierausweis','Sonstiges'];
+function sharedOwner(o){return o==='tiere'||o==='fam';}
 var TODO=['Futter für Ivie, Frida und Lilli aufstocken','Futterplan und Tierarzt-Nummer hinlegen','Hausschlüssel übergeben','Mülltonnen und Post klären','Blumen gießen besprechen'];
 var VIEWS=['heute','termine','essen','einkauf','wer-ist-wo','mehr','aufgaben','dokumente','privat'];
 var REMIND=[[30,'30 Tage vorher'],[7,'7 Tage vorher'],[1,'1 Tag vorher'],[0,'Am Tag selbst']];
@@ -633,7 +637,7 @@ function viewWo(){
 function viewAufgaben(){
   var open=openTasks(),done=state.tasks.filter(function(t){return t.done;});
   var h='<a class="back" href="#mehr">‹ Mehr</a><div class="view-head"><div><h1>Aufgaben</h1><p>Wichtiges mit Frist. Wer zuständig ist, bekommt rechtzeitig Bescheid.</p></div><button type="button" class="btn primary" data-act="new-task">Neu</button></div>';
-  h+='<p class="note">Der Bescheid erscheint auf der Startseite der zuständigen Person. Mitteilungen aufs Handy folgen im nächsten Ausbauschritt.</p>';
+  h+='<p class="note">Der Bescheid erscheint auf der Startseite der zuständigen Person und, wenn eingeschaltet, als Mitteilung auf ihrem Handy.</p>'+pushSection();
   h+='<section class="sec"><div class="sec-head"><h2>Offen</h2><span class="count">'+open.length+'</span></div><div class="card">'+(open.length?open.map(function(t){return taskRow(t,true);}).join(''):'<p class="empty">Alles erledigt.</p>')+'</div></section>';
   if(done.length)h+='<section class="sec"><div class="sec-head"><h2>Erledigt</h2><button type="button" class="btn small" data-act="clear-tasks">Erledigte entfernen</button></div><div class="card">'+done.map(function(t){return taskRow(t,true);}).join('')+'</div></section>';
   return h;
@@ -661,16 +665,16 @@ function expInfo(doc){
 }
 function viewDokumente(){
   var h='<a class="back" href="#mehr">‹ Mehr</a><div class="view-head"><div><h1>Dokumente</h1><p>Damit jeder die wichtigen Ausweise griffbereit hat.</p></div><button type="button" class="btn primary" data-act="new-doc">Neu</button></div>';
-  h+='<p class="note">Fotos eines Dokuments sehen nur die Personen, für die das Dokument freigegeben ist. Das regelt die Datenbank, nicht nur die App.</p>';
+  h+='<p class="note">Neue Dokumente sieht die ganze Familie, zum Beispiel Flugbuchungen und Hotelbestätigungen. Wer etwas nur für sich will, nimmt bei „Wer darf es sehen?“ die anderen heraus. Fotos und PDFs sind genauso sichtbar wie das Dokument selbst.</p>';
   var vis=state.docs.filter(canSee),hidden=state.docs.length-vis.length;
-  var groups=PEOPLE.map(function(p){return {id:p.id,name:p.name};}).concat([{id:'tiere',name:'Tiere'}]);
+  var groups=[{id:'fam',name:'Ganze Familie'}].concat(PEOPLE.map(function(p){return {id:p.id,name:p.name};})).concat([{id:'tiere',name:'Tiere'}]);
   groups.forEach(function(g){
     var docs=vis.filter(function(x){return x.owner===g.id;});
     if(!docs.length)return;
-    h+='<section class="sec"><div class="sec-head"><h2>'+(g.id==='tiere'?'':av(g.id)+' ')+esc(g.name)+'</h2><span class="count">'+docs.length+'</span></div><div class="card">'+docs.map(function(x){
-      var e=expInfo(x),only=x.vis.length<=1&&x.owner!=='tiere';
-      return '<div class="row"><div class="grow"><div class="t">'+esc(x.kind)+'</div><div class="s'+(e.w?' warn':'')+'">'+e.t+'</div><div class="chips">'+(only?'<span class="chip open">Nur '+esc(person(x.owner).name)+'</span>':whoChips(x.vis))+'</div>'+photoStrip(x,'doc')+'</div>'+
-        '<div class="doc-acts">'+photoButton('doc',x)+(x.owner===state.me||x.owner==='tiere'?'<button type="button" class="btn small ghost" data-act="del-doc" data-id="'+x.id+'" aria-label="'+esc(x.kind)+' löschen">Löschen</button>':'')+'</div></div>';
+    h+='<section class="sec"><div class="sec-head"><h2>'+(sharedOwner(g.id)?'':av(g.id)+' ')+esc(g.name)+'</h2><span class="count">'+docs.length+'</span></div><div class="card">'+docs.map(function(x){
+      var e=expInfo(x),only=x.vis.length<=1&&!sharedOwner(x.owner);
+      return '<div class="row"><div class="grow"><div class="t">'+esc(x.kind)+(x.title?': '+esc(x.title):'')+'</div><div class="s'+(e.w?' warn':'')+'">'+e.t+'</div><div class="chips">'+(only?'<span class="chip open">Nur '+esc(person(x.owner).name)+'</span>':whoChips(x.vis))+'</div>'+photoStrip(x,'doc')+'</div>'+
+        '<div class="doc-acts">'+photoButton('doc',x)+(x.owner===state.me||sharedOwner(x.owner)?'<button type="button" class="btn small ghost" data-act="del-doc" data-id="'+x.id+'" aria-label="'+esc(x.kind)+' löschen">Löschen</button>':'')+'</div></div>';
     }).join('')+'</div></section>';
   });
   if(!vis.length)h+='<div class="card"><p class="empty">Für dich ist noch nichts freigegeben.</p></div>';
@@ -848,7 +852,7 @@ function pickMany(name,legend,checked){
 function pickOne(name,legend,sel,none,extra){
   var h='<fieldset><legend>'+legend+'</legend><div class="opts">';
   PEOPLE.forEach(function(p){h+='<label class="seg who p-'+p.id+'"><input type="radio" name="'+name+'" id="f-'+name+'-'+p.id+'" value="'+p.id+'"'+(sel===p.id?' checked':'')+'><span>'+p.name+'</span></label>';});
-  if(extra)h+='<label class="seg"><input type="radio" name="'+name+'" id="f-'+name+'-'+extra.id+'" value="'+extra.id+'"'+(sel===extra.id?' checked':'')+'><span>'+extra.name+'</span></label>';
+  if(extra)[].concat(extra).forEach(function(x){h+='<label class="seg"><input type="radio" name="'+name+'" id="f-'+name+'-'+x.id+'" value="'+x.id+'"'+(sel===x.id?' checked':'')+'><span>'+x.name+'</span></label>';});
   if(none)h+='<label class="seg"><input type="radio" name="'+name+'" id="f-'+name+'-x" value=""'+(!sel?' checked':'')+'><span>'+none+'</span></label>';
   return h+'</div></fieldset>';
 }
@@ -894,7 +898,8 @@ function sheetMeal(m){
 }
 function sheetDoc(){
   openSheet('<h2 id="sheet-title">Neues Dokument</h2><form data-form="doc" novalidate>'+
-    pickOne('owner','Wem gehört es?',state.me,'',{id:'tiere',name:'Tiere'})+
+    pickOne('owner','Wem gehört es?','fam','',[{id:'fam',name:'Ganze Familie'},{id:'tiere',name:'Tiere'}])+
+    '<label class="l" for="f-dtitle">Bezeichnung (optional)<input class="field" type="text" id="f-dtitle" name="title" maxlength="80" placeholder="z. B. Flug Wien – Split, 12. Dez."></label>'+
     '<div class="two"><label class="l" for="f-kind">Art<select class="field" id="f-kind" name="kind">'+DOCKINDS.map(function(k){return '<option>'+k+'</option>';}).join('')+'</select></label><label class="l" for="f-exp">Gültig bis (optional)<input class="field" type="date" id="f-exp" name="exp"></label></div>'+
     pickMany('vis','Wer darf es sehen?',ALL)+
     ACTIONS+'</form>');
@@ -1054,9 +1059,9 @@ document.addEventListener('submit',function(e){
     closeSheet();commit();toast('Essen gespeichert.');
   }else if(kind==='doc'){
     var owner=val('owner')||state.me,vis=fd.getAll('vis');
-    if(owner==='tiere')vis=ALL.slice();
+    if(sharedOwner(owner))vis=ALL.slice();
     else if(vis.indexOf(owner)<0)vis.push(owner);
-    state.docs.push({id:uid(),owner:owner,kind:val('kind')||'Sonstiges',exp:val('exp'),vis:vis});
+    state.docs.push({id:uid(),owner:owner,kind:val('kind')||'Sonstiges',title:val('title'),exp:val('exp'),vis:vis});
     closeSheet();commit();toast('Eintrag gespeichert.');
   }
 });
@@ -1091,7 +1096,7 @@ function flatten(st){
   function put(id,kind,data,owner,priv,vis){m[id]={id:id,kind:kind,data:data,owner:owner||null,private:!!priv,visible_to:vis||null};}
   Object.keys(LIST).forEach(function(k){
     st[LIST[k]].forEach(function(x){
-      if(k==='doc'){var pet=x.owner==='tiere';put(x.id,k,x,pet?null:x.owner,false,(pet||x.vis.length>=PEOPLE.length)?null:x.vis.slice().sort());}
+      if(k==='doc'){var pet=x.owner==='tiere'||x.owner==='fam';put(x.id,k,x,pet?null:x.owner,false,(pet||x.vis.length>=PEOPLE.length)?null:x.vis.slice().sort());}
       else put(x.id,k,x);
     });
   });
@@ -1288,11 +1293,12 @@ function photoStrip(item,kind){
   if(!ps.length)return '';
   return '<div class="photos">'+ps.map(function(p,i){
     var u=urls[p.path];
+    if(p.pdf)return '<button type="button" class="ph pdf" data-act="photo-open" data-kind="'+kind+'" data-id="'+item.id+'" data-i="'+i+'" aria-label="PDF '+esc(p.name||'')+' öffnen"><b>PDF</b><small>'+esc((p.name||'').replace(/\.pdf$/i,''))+'</small></button>';
     return '<button type="button" class="ph" data-act="photo-open" data-kind="'+kind+'" data-id="'+item.id+'" data-i="'+i+'" aria-label="Foto '+(i+1)+' ansehen">'+(u?'<img src="'+esc(u.url)+'" alt="">':'<span class="ph-wait"></span>')+'</button>';
   }).join('')+'</div>';
 }
-function canAddPhoto(kind,item){return kind==='meal'||item.owner===state.me||item.owner==='tiere';}
-function photoButton(kind,item){return canAddPhoto(kind,item)?'<button type="button" class="btn small" data-act="photo-add" data-kind="'+kind+'" data-id="'+item.id+'" aria-label="Foto zu '+esc(kind==='doc'?item.kind:item.dish)+' hinzufügen">Foto</button>':'';}
+function canAddPhoto(kind,item){return true;}
+function photoButton(kind,item){return canAddPhoto(kind,item)?'<button type="button" class="btn small" data-act="photo-add" data-kind="'+kind+'" data-id="'+item.id+'" aria-label="'+(kind==='doc'?'Foto oder PDF':'Foto')+' zu '+esc(kind==='doc'?item.kind:item.dish)+' hinzufügen">'+(kind==='doc'?'Foto / PDF':'Foto')+'</button>':'';}
 
 /* ask for short-lived links to the pictures on screen, then draw them */
 function wantUrls(){
@@ -1329,23 +1335,25 @@ function shrinkPhoto(file){
 function uploadPhoto(t,file){
   var item=byId(photoList(t.kind),t.id);if(!item)return;
   if(!sb||navigator.onLine===false){toast('Fotos brauchen eine Internetverbindung.');return;}
-  toast('Foto wird hochgeladen …');
-  var path=(t.kind==='doc'?'docs/':'meals/')+t.id+'/'+uid()+'.jpg';
-  shrinkPhoto(file).then(function(s){
+  var isPdf=t.kind==='doc'&&(file.type==='application/pdf'||/\.pdf$/i.test(file.name||''));
+  if(isPdf&&file.size>10485760){toast('Das PDF ist größer als 10 MB und zu groß für die App.');return;}
+  toast(isPdf?'PDF wird hochgeladen …':'Foto wird hochgeladen …');
+  var path=(t.kind==='doc'?'docs/':'meals/')+t.id+'/'+uid()+(isPdf?'.pdf':'.jpg');
+  (isPdf?Promise.resolve({blob:file,pdf:true}):shrinkPhoto(file)).then(function(s){
     /* the entry has to be in the database first: the storage rules check it */
     var row=flatten(state)[t.id];
     if(!row)throw new Error('Eintrag fehlt');
     return Promise.resolve(sb.from('items').upsert([{id:row.id,kind:row.kind,data:row.data,owner:row.owner,private:row.private,visible_to:row.visible_to,updated_by:CLIENT,updated_at:new Date().toISOString()}])).then(function(r){
       if(r.error)throw r.error;
       last[row.id]=canon(row);
-      return sb.storage.from(BUCKET).upload(path,s.blob,{contentType:'image/jpeg',upsert:false});
+      return sb.storage.from(BUCKET).upload(path,s.blob,{contentType:s.pdf?'application/pdf':'image/jpeg',upsert:false});
     }).then(function(r){
       if(r.error)throw r.error;
       var cur=byId(photoList(t.kind),t.id);
       if(!cur){sb.storage.from(BUCKET).remove([path]);return;}
-      cur.photos=(cur.photos||[]).concat([{path:path,w:s.w,h:s.h,by:state.me,ts:Date.now()}]);
+      cur.photos=(cur.photos||[]).concat([s.pdf?{path:path,pdf:true,name:String(file.name||'Dokument.pdf').slice(0,80),by:state.me,ts:Date.now()}:{path:path,w:s.w,h:s.h,by:state.me,ts:Date.now()}]);
       urls[path]={url:URL.createObjectURL(s.blob),exp:Date.now()+3500000};
-      commit();toast('Foto gespeichert.');
+      commit();toast(s.pdf?'PDF gespeichert.':'Foto gespeichert.');
     });
   }).catch(function(e){
     toast(/lesen|umgewandelt/.test(e&&e.message)?'Dieses Bild kann die App nicht öffnen. Bitte ein Foto im JPG- oder PNG-Format wählen.':'Das Foto konnte nicht gespeichert werden.');
@@ -1360,9 +1368,9 @@ fileInput.addEventListener('change',function(){
 function openPhoto(kind,id,i){
   var item=byId(photoList(kind),id);if(!item||!item.photos||!item.photos[i])return;
   var p=item.photos[i],u=urls[p.path],title=kind==='doc'?item.kind:item.dish;
-  openSheet('<h2 id="sheet-title">'+esc(title)+'</h2><div class="viewer">'+(u?'<img src="'+esc(u.url)+'" alt="Foto: '+esc(title)+'">':'<p class="hint">Das Foto wird geladen …</p>')+'</div>'+
+  openSheet('<h2 id="sheet-title">'+esc(title)+'</h2><div class="viewer">'+(p.pdf?(u?'<a class="btn primary" href="'+esc(u.url)+'" target="_blank" rel="noopener">PDF öffnen: '+esc(p.name||'Dokument')+'</a>':'<p class="hint">Das PDF wird vorbereitet …</p>'):(u?'<img src="'+esc(u.url)+'" alt="Foto: '+esc(title)+'">':'<p class="hint">Das Foto wird geladen …</p>'))+'</div>'+
     '<p class="hint">Hochgeladen von '+esc(person(p.by)?person(p.by).name:'')+(p.ts?' am '+fmtDay(iso(new Date(p.ts))):'')+'.</p>'+
-    '<div class="actions">'+(canAddPhoto(kind,item)?'<button type="button" class="btn ghost" data-act="photo-del" data-kind="'+kind+'" data-id="'+id+'" data-i="'+i+'">Foto löschen</button>':'')+'<button type="button" class="btn" data-act="close">Schließen</button></div>');
+    '<div class="actions">'+(canAddPhoto(kind,item)?'<button type="button" class="btn ghost" data-act="photo-del" data-kind="'+kind+'" data-id="'+id+'" data-i="'+i+'">'+(p.pdf?'PDF löschen':'Foto löschen')+'</button>':'')+'<button type="button" class="btn" data-act="close">Schließen</button></div>');
 }
 function deletePhoto(kind,id,i){
   var item=byId(photoList(kind),id);if(!item||!item.photos||!item.photos[i])return;
@@ -1383,10 +1391,101 @@ function dropWithPhotos(kind,id,done){
 document.addEventListener('click',function(e){
   var el=e.target.closest('[data-act^="photo-"]');if(!el)return;
   var a=el.dataset.act;
-  if(a==='photo-add'){fileTarget={kind:el.dataset.kind,id:el.dataset.id};fileInput.value='';fileInput.click();}
+  if(a==='photo-add'){fileTarget={kind:el.dataset.kind,id:el.dataset.id};fileInput.accept=el.dataset.kind==='doc'?'image/*,application/pdf':'image/*';fileInput.value='';fileInput.click();}
   else if(a==='photo-open')openPhoto(el.dataset.kind,el.dataset.id,Number(el.dataset.i));
   else if(a==='photo-del')deletePhoto(el.dataset.kind,el.dataset.id,Number(el.dataset.i));
 });
+
+/* ---------- notifications on the phone ----------
+   Each phone signs up once ("Mitteilungen einschalten"); the reminder service then sends
+   task reminders to every phone of the people a task is assigned to. */
+var FN=(CFG.url||'')+'/functions/v1/erinnerungen';
+var pushInfo={checked:false,on:false,busy:false};
+function pushSupported(){return 'serviceWorker' in navigator&&'PushManager' in window&&'Notification' in window;}
+function isIos(){return /iPhone|iPad|iPod/.test(navigator.userAgent)||(navigator.platform==='MacIntel'&&navigator.maxTouchPoints>1);}
+function isStandalone(){return (window.matchMedia&&matchMedia('(display-mode: standalone)').matches)||navigator.standalone===true;}
+function b64ToBytes(s){var p='='.repeat((4-s.length%4)%4),b=atob((s+p).replace(/-/g,'+').replace(/_/g,'/')),a=new Uint8Array(b.length);for(var i=0;i<b.length;i++)a[i]=b.charCodeAt(i);return a;}
+function swReady(){return navigator.serviceWorker.ready;}
+
+function checkPush(){
+  if(!pushSupported()){pushInfo.checked=true;return;}
+  swReady().then(function(reg){return reg.pushManager.getSubscription();}).then(function(s){
+    pushInfo.checked=true;pushInfo.on=!!s&&Notification.permission==='granted';
+    if(view==='aufgaben')render(true);
+  }).catch(function(){pushInfo.checked=true;});
+}
+function pushSection(){
+  var h='<section class="sec"><div class="sec-head"><h2>Mitteilungen aufs Handy</h2></div><div class="sit">';
+  if(isIos()&&!isStandalone()){
+    h+='<p>Am iPhone kommen Mitteilungen nur, wenn Rudel als App am Home-Bildschirm liegt: in <b>Safari</b> öffnen, unten auf Teilen tippen, dann „Zum Home-Bildschirm“. Danach Rudel über das Icon öffnen und hier einschalten.</p>';
+  }else if(!pushSupported()){
+    h+='<p>Dieser Browser kann keine Mitteilungen empfangen. Am Handy: Android mit Chrome, iPhone mit Safari und Rudel am Home-Bildschirm.</p>';
+  }else if(Notification.permission==='denied'){
+    h+='<p>Mitteilungen sind für Rudel auf diesem Gerät blockiert. Erlaube sie in den Einstellungen des Handys bei Rudel (Android: auch in Chrome unter Website-Einstellungen), dann öffne die App neu.</p>';
+  }else if(pushInfo.on){
+    h+='<p><span class="pill ok">Eingeschaltet</span> Dieses Gerät bekommt Erinnerungen für alle Aufgaben, bei denen du zuständig bist.</p>'+
+      '<div class="acts" style="margin-top:0"><button type="button" class="btn small" data-act="push-test"'+(pushInfo.busy?' disabled':'')+'>Test-Mitteilung schicken</button><button type="button" class="btn small ghost" data-act="push-off"'+(pushInfo.busy?' disabled':'')+'>Ausschalten</button></div>';
+  }else{
+    h+='<p>Schalte Mitteilungen ein, damit du Bescheid bekommst, wenn eine deiner Aufgaben fällig wird. Das gilt für dieses Gerät, jedes Handy schaltet es selbst ein.</p>'+
+      '<button type="button" class="btn primary" data-act="push-on"'+(pushInfo.busy||!pushInfo.checked?' disabled':'')+'>Mitteilungen einschalten</button>';
+  }
+  h+='<p class="hint">Erinnerungen kommen ab 8 Uhr morgens an den Tagen, die du bei der Aufgabe wählst, und einmal am Tag nach der Frist, wenn noch nicht abgehakt ist.</p></div></section>';
+  return h;
+}
+function setPushBusy(b){pushInfo.busy=b;if(view==='aufgaben')render(true);}
+function enablePush(){
+  setPushBusy(true);
+  Notification.requestPermission().then(function(p){
+    if(p!=='granted')throw {msg:'Ohne Erlaubnis kann Rudel keine Mitteilungen schicken.'};
+    return fetch(FN+'?key',{headers:{apikey:CFG.key}}).then(function(r){if(!r.ok)throw {msg:'Der Erinnerungsdienst ist gerade nicht erreichbar.'};return r.json();});
+  }).then(function(k){
+    return swReady().then(function(reg){
+      return reg.pushManager.getSubscription().then(function(old){return old?old.unsubscribe():null;}).then(function(){
+        return reg.pushManager.subscribe({userVisibleOnly:true,applicationServerKey:b64ToBytes(k.publicKey)});
+      });
+    });
+  }).then(function(s){
+    return Promise.resolve(sb.from('push_subs').upsert([{endpoint:s.endpoint,person:state.me,sub:s.toJSON()}])).then(function(r){
+      if(r.error){s.unsubscribe();throw {msg:'Das Gerät konnte nicht angemeldet werden.'};}
+    });
+  }).then(function(){
+    pushInfo.on=true;setPushBusy(false);toast('Mitteilungen sind eingeschaltet.');
+  }).catch(function(e){
+    setPushBusy(false);toast(e&&e.msg?e.msg:'Mitteilungen konnten nicht eingeschaltet werden.');
+    if(window.console)console.error('Mitteilungen',e);
+  });
+}
+function disablePush(quiet){
+  if(!pushSupported())return Promise.resolve();
+  if(!quiet)setPushBusy(true);
+  return swReady().then(function(reg){return reg.pushManager.getSubscription();}).then(function(s){
+    if(!s)return;
+    var gone=sb?Promise.resolve(sb.from('push_subs').delete().eq('endpoint',s.endpoint)):Promise.resolve();
+    return gone.then(function(){return s.unsubscribe();},function(){return s.unsubscribe();});
+  }).then(function(){
+    pushInfo.on=false;if(!quiet){setPushBusy(false);toast('Mitteilungen auf diesem Gerät ausgeschaltet.');}
+  }).catch(function(){if(!quiet){setPushBusy(false);toast('Das hat nicht geklappt. Bitte nochmal versuchen.');}});
+}
+function testPush(){
+  setPushBusy(true);
+  Promise.resolve(sb.auth.getSession()).then(function(r){
+    var tok=r&&r.data&&r.data.session?r.data.session.access_token:'';
+    return fetch(FN+'?test',{method:'POST',headers:{apikey:CFG.key,Authorization:'Bearer '+tok}});
+  }).then(function(r){return r.json().then(function(j){return {ok:r.ok,j:j};});}).then(function(x){
+    setPushBusy(false);
+    toast(x.ok&&x.j.sent?'Test-Mitteilung ist unterwegs.':'Es kam keine Mitteilung an. Bitte aus- und wieder einschalten.');
+  }).catch(function(){setPushBusy(false);toast('Der Erinnerungsdienst ist gerade nicht erreichbar.');});
+}
+document.addEventListener('click',function(e){
+  var el=e.target.closest('[data-act^="push-"]');if(!el)return;
+  if(el.dataset.act==='push-on')enablePush();
+  else if(el.dataset.act==='push-off')disablePush(false);
+  else if(el.dataset.act==='push-test')testPush();
+});
+/* a phone that is signed out must not keep getting someone's reminders */
+var signOutPlain=signOut;
+signOut=function(){disablePush(true).then(signOutPlain,signOutPlain);};
+checkPush();
 
 })();
 </script>
