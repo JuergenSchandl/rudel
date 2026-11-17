@@ -185,6 +185,14 @@ button.sync{background:none;border:0;padding:0;cursor:pointer;text-decoration:un
 .gate form{display:flex;flex-direction:column;gap:12px}
 .account{display:flex;flex-direction:column;gap:10px}
 
+/* photos */
+.photos{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}
+.ph{width:64px;height:64px;border-radius:10px;overflow:hidden;border:1px solid var(--line);padding:0;background:var(--bg);cursor:pointer;flex:none}
+.ph img{width:100%;height:100%;object-fit:cover;display:block}
+.ph-wait{display:block;width:100%;height:100%;background:color-mix(in srgb,var(--ink) 8%,transparent)}
+.viewer img{display:block;width:100%;height:auto;max-height:62vh;object-fit:contain;border-radius:12px;background:var(--bg)}
+.doc-acts{display:flex;flex-direction:column;gap:4px;align-items:flex-end}
+
 /* countdown */
 .cd{flex:none;width:76px;text-align:center;border-radius:12px;padding:7px 4px;background:color-mix(in srgb,var(--accent) 12%,var(--surface));color:var(--accent);line-height:1.1}
 .cd b{display:block;font-family:var(--font-display);font-weight:800;font-size:1.55rem;font-variant-numeric:tabular-nums}
@@ -458,10 +466,11 @@ function mealBody(m){
 }
 function mealRow(m,day){
   var mine=(m.inv||{})[state.me];
-  return '<div class="row top-align">'+day+'<div class="grow">'+mealBody(m)+
+  return '<div class="row top-align">'+day+'<div class="grow">'+mealBody(m)+photoStrip(m,'meal')+
     (mine?'<div class="acts"><button type="button" class="btn small'+(mine==='ja'?' primary':'')+'" id="rsvp-ja-'+m.id+'" data-act="rsvp" data-id="'+m.id+'" data-v="ja" aria-pressed="'+(mine==='ja')+'">Ich komme</button><button type="button" class="btn small'+(mine==='nein'?' primary':'')+'" id="rsvp-nein-'+m.id+'" data-act="rsvp" data-id="'+m.id+'" data-v="nein" aria-pressed="'+(mine==='nein')+'">Kann nicht</button></div>':'')+
     '<div class="acts">'+
     (m.items?(m.listed?'<span class="pill ok">Zutaten stehen auf der Liste</span>':'<button type="button" class="btn small" data-act="list-items" data-id="'+m.id+'">Zutaten auf die Liste</button>'):'')+
+    photoButton('meal',m)+
     '<button type="button" class="btn small" data-act="edit-meal" data-id="'+m.id+'" aria-label="'+esc(m.dish)+' ändern">Ändern</button>'+
     '<button type="button" class="btn small ghost" data-act="del-meal" data-id="'+m.id+'" aria-label="'+esc(m.dish)+' löschen">Löschen</button></div></div></div>';
 }
@@ -652,7 +661,7 @@ function expInfo(doc){
 }
 function viewDokumente(){
   var h='<a class="back" href="#mehr">‹ Mehr</a><div class="view-head"><div><h1>Dokumente</h1><p>Damit jeder die wichtigen Ausweise griffbereit hat.</p></div><button type="button" class="btn primary" data-act="new-doc">Neu</button></div>';
-  h+='<p class="note">Vorerst merkt sich die App nur, welche Dokumente es gibt und wann sie ablaufen. Fotos und PDFs der Ausweise kommen in einem späteren Ausbauschritt dazu.</p>';
+  h+='<p class="note">Fotos eines Dokuments sehen nur die Personen, für die das Dokument freigegeben ist. Das regelt die Datenbank, nicht nur die App.</p>';
   var vis=state.docs.filter(canSee),hidden=state.docs.length-vis.length;
   var groups=PEOPLE.map(function(p){return {id:p.id,name:p.name};}).concat([{id:'tiere',name:'Tiere'}]);
   groups.forEach(function(g){
@@ -660,8 +669,8 @@ function viewDokumente(){
     if(!docs.length)return;
     h+='<section class="sec"><div class="sec-head"><h2>'+(g.id==='tiere'?'':av(g.id)+' ')+esc(g.name)+'</h2><span class="count">'+docs.length+'</span></div><div class="card">'+docs.map(function(x){
       var e=expInfo(x),only=x.vis.length<=1&&x.owner!=='tiere';
-      return '<div class="row"><div class="grow"><div class="t">'+esc(x.kind)+'</div><div class="s'+(e.w?' warn':'')+'">'+e.t+'</div><div class="chips">'+(only?'<span class="chip open">Nur '+esc(person(x.owner).name)+'</span>':whoChips(x.vis))+'</div></div>'+
-        (x.owner===state.me||x.owner==='tiere'?'<button type="button" class="btn small ghost" data-act="del-doc" data-id="'+x.id+'" aria-label="'+esc(x.kind)+' löschen">Löschen</button>':'')+'</div>';
+      return '<div class="row"><div class="grow"><div class="t">'+esc(x.kind)+'</div><div class="s'+(e.w?' warn':'')+'">'+e.t+'</div><div class="chips">'+(only?'<span class="chip open">Nur '+esc(person(x.owner).name)+'</span>':whoChips(x.vis))+'</div>'+photoStrip(x,'doc')+'</div>'+
+        '<div class="doc-acts">'+photoButton('doc',x)+(x.owner===state.me||x.owner==='tiere'?'<button type="button" class="btn small ghost" data-act="del-doc" data-id="'+x.id+'" aria-label="'+esc(x.kind)+' löschen">Löschen</button>':'')+'</div></div>';
     }).join('')+'</div></section>';
   });
   if(!vis.length)h+='<div class="card"><p class="empty">Für dich ist noch nichts freigegeben.</p></div>';
@@ -817,6 +826,7 @@ function render(keepScroll){
   var tab=(view==='dokumente'||view==='privat'||view==='aufgaben')?'mehr':view;
   Array.prototype.forEach.call(document.querySelectorAll('#tabs a'),function(a){if(a.dataset.view===tab)a.setAttribute('aria-current','page');else a.removeAttribute('aria-current');});
   main.innerHTML=RENDER[view]();
+  wantUrls();
   Object.keys(typed).forEach(function(id){var el=document.getElementById(id);if(el&&!el.value)el.value=typed[id];});
   if(keepScroll){main.scrollTop=top;var t2=document.getElementById('tl-scroll');if(t2)t2.scrollLeft=tlx;if(focusId){var f=document.getElementById(focusId);if(f)try{f.focus({preventScroll:true});}catch(e){}}}
   else main.scrollTop=0;
@@ -951,9 +961,9 @@ document.addEventListener('click',function(e){
   }
   else if(act==='del-appt'){state.appts=without(state.appts,id);commit();toast('Termin gelöscht.');}
   else if(act==='del-away'){state.away=without(state.away,id);commit();toast('Eintrag gelöscht.');}
-  else if(act==='del-meal'){state.meals=without(state.meals,id);commit();toast('Essen gelöscht.');}
+  else if(act==='del-meal'){dropWithPhotos('meal',id,function(){state.meals=without(state.meals,id);commit();toast('Essen gelöscht.');});}
   else if(act==='del-wish'){state.wishes=without(state.wishes,id);commit();}
-  else if(act==='del-doc'){state.docs=without(state.docs,id);commit();toast('Eintrag gelöscht.');}
+  else if(act==='del-doc'){dropWithPhotos('doc',id,function(){state.docs=without(state.docs,id);commit();toast('Eintrag gelöscht.');});}
   else if(act==='del-note'){state.notes[state.me]=without(state.notes[state.me]||[],id);commit();}
   else if(act==='del-bp'){var b=bpOf(state.me);b.rows=without(b.rows,id);commit();}
   else if(act==='clear-done'){state.shop=state.shop.filter(function(i){return !i.done;});commit();}
@@ -1262,6 +1272,121 @@ document.addEventListener('visibilitychange',function(){
 });
 if('serviceWorker' in navigator&&location.protocol==='https:')navigator.serviceWorker.register('sw.js').catch(function(){});
 boot();
+
+/* ---------- photos ----------
+   Pictures live in the private storage bucket "bilder" under docs/<entry id>/ or meals/<entry id>/.
+   The database only lets someone see a picture if they may see the entry it belongs to,
+   so a document photo is exactly as visible as the document itself. */
+var BUCKET='bilder',urls={},urlBusy={},fileTarget=null;
+var fileInput=document.createElement('input');
+fileInput.type='file';fileInput.accept='image/*';fileInput.id='photo-file';fileInput.hidden=true;
+document.body.appendChild(fileInput);
+
+function photoList(kind){return kind==='doc'?state.docs:state.meals;}
+function photoStrip(item,kind){
+  var ps=item.photos||[];
+  if(!ps.length)return '';
+  return '<div class="photos">'+ps.map(function(p,i){
+    var u=urls[p.path];
+    return '<button type="button" class="ph" data-act="photo-open" data-kind="'+kind+'" data-id="'+item.id+'" data-i="'+i+'" aria-label="Foto '+(i+1)+' ansehen">'+(u?'<img src="'+esc(u.url)+'" alt="">':'<span class="ph-wait"></span>')+'</button>';
+  }).join('')+'</div>';
+}
+function canAddPhoto(kind,item){return kind==='meal'||item.owner===state.me||item.owner==='tiere';}
+function photoButton(kind,item){return canAddPhoto(kind,item)?'<button type="button" class="btn small" data-act="photo-add" data-kind="'+kind+'" data-id="'+item.id+'" aria-label="Foto zu '+esc(kind==='doc'?item.kind:item.dish)+' hinzufügen">Foto</button>':'';}
+
+/* ask for short-lived links to the pictures on screen, then draw them */
+function wantUrls(){
+  if(!sb||!state.me)return;
+  var now=Date.now(),need=[];
+  state.docs.concat(state.meals).forEach(function(it){(it.photos||[]).forEach(function(p){
+    var u=urls[p.path];
+    if((!u||u.exp<now+60000)&&!urlBusy[p.path]){need.push(p.path);urlBusy[p.path]=true;}
+  });});
+  if(!need.length)return;
+  Promise.resolve(sb.storage.from(BUCKET).createSignedUrls(need,3600)).then(function(r){
+    need.forEach(function(p){delete urlBusy[p];});
+    if(r.error||!r.data)return;
+    var got=false;
+    r.data.forEach(function(x){if(x&&x.signedUrl&&!x.error){urls[x.path]={url:x.signedUrl,exp:Date.now()+3500000};got=true;}});
+    if(got)render(true);
+  },function(){need.forEach(function(p){delete urlBusy[p];});});
+}
+
+function shrinkPhoto(file){
+  return new Promise(function(res,rej){
+    var src=URL.createObjectURL(file),img=new Image();
+    img.onload=function(){
+      var max=1600,w=img.naturalWidth,h=img.naturalHeight,s=Math.min(1,max/Math.max(w,h));
+      var c=document.createElement('canvas');c.width=Math.max(1,Math.round(w*s));c.height=Math.max(1,Math.round(h*s));
+      c.getContext('2d').drawImage(img,0,0,c.width,c.height);
+      URL.revokeObjectURL(src);
+      c.toBlob(function(b){if(b)res({blob:b,w:c.width,h:c.height});else rej(new Error('Bild konnte nicht umgewandelt werden'));},'image/jpeg',0.82);
+    };
+    img.onerror=function(){URL.revokeObjectURL(src);rej(new Error('Bild konnte nicht gelesen werden'));};
+    img.src=src;
+  });
+}
+function uploadPhoto(t,file){
+  var item=byId(photoList(t.kind),t.id);if(!item)return;
+  if(!sb||navigator.onLine===false){toast('Fotos brauchen eine Internetverbindung.');return;}
+  toast('Foto wird hochgeladen …');
+  var path=(t.kind==='doc'?'docs/':'meals/')+t.id+'/'+uid()+'.jpg';
+  shrinkPhoto(file).then(function(s){
+    /* the entry has to be in the database first: the storage rules check it */
+    var row=flatten(state)[t.id];
+    if(!row)throw new Error('Eintrag fehlt');
+    return Promise.resolve(sb.from('items').upsert([{id:row.id,kind:row.kind,data:row.data,owner:row.owner,private:row.private,visible_to:row.visible_to,updated_by:CLIENT,updated_at:new Date().toISOString()}])).then(function(r){
+      if(r.error)throw r.error;
+      last[row.id]=canon(row);
+      return sb.storage.from(BUCKET).upload(path,s.blob,{contentType:'image/jpeg',upsert:false});
+    }).then(function(r){
+      if(r.error)throw r.error;
+      var cur=byId(photoList(t.kind),t.id);
+      if(!cur){sb.storage.from(BUCKET).remove([path]);return;}
+      cur.photos=(cur.photos||[]).concat([{path:path,w:s.w,h:s.h,by:state.me,ts:Date.now()}]);
+      urls[path]={url:URL.createObjectURL(s.blob),exp:Date.now()+3500000};
+      commit();toast('Foto gespeichert.');
+    });
+  }).catch(function(e){
+    toast(/lesen|umgewandelt/.test(e&&e.message)?'Dieses Bild kann die App nicht öffnen. Bitte ein Foto im JPG- oder PNG-Format wählen.':'Das Foto konnte nicht gespeichert werden.');
+    if(window.console)console.error('Foto',e);
+  });
+}
+fileInput.addEventListener('change',function(){
+  var f=fileInput.files&&fileInput.files[0],t=fileTarget;fileTarget=null;
+  if(f&&t)uploadPhoto(t,f);
+});
+
+function openPhoto(kind,id,i){
+  var item=byId(photoList(kind),id);if(!item||!item.photos||!item.photos[i])return;
+  var p=item.photos[i],u=urls[p.path],title=kind==='doc'?item.kind:item.dish;
+  openSheet('<h2 id="sheet-title">'+esc(title)+'</h2><div class="viewer">'+(u?'<img src="'+esc(u.url)+'" alt="Foto: '+esc(title)+'">':'<p class="hint">Das Foto wird geladen …</p>')+'</div>'+
+    '<p class="hint">Hochgeladen von '+esc(person(p.by)?person(p.by).name:'')+(p.ts?' am '+fmtDay(iso(new Date(p.ts))):'')+'.</p>'+
+    '<div class="actions">'+(canAddPhoto(kind,item)?'<button type="button" class="btn ghost" data-act="photo-del" data-kind="'+kind+'" data-id="'+id+'" data-i="'+i+'">Foto löschen</button>':'')+'<button type="button" class="btn" data-act="close">Schließen</button></div>');
+}
+function deletePhoto(kind,id,i){
+  var item=byId(photoList(kind),id);if(!item||!item.photos||!item.photos[i])return;
+  var p=item.photos[i];
+  Promise.resolve(sb.storage.from(BUCKET).remove([p.path])).then(function(r){
+    if(r&&r.error)throw r.error;
+    item.photos=item.photos.filter(function(x){return x.path!==p.path;});
+    delete urls[p.path];
+    closeSheet();commit();toast('Foto gelöscht.');
+  }).catch(function(){toast('Das Foto konnte nicht gelöscht werden. Bitte prüf die Verbindung.');});
+}
+/* deleting an entry removes its pictures first, while the entry still proves who may delete them */
+function dropWithPhotos(kind,id,done){
+  var item=byId(photoList(kind),id),ps=item&&item.photos||[];
+  if(!ps.length||!sb){done();return;}
+  Promise.resolve(sb.storage.from(BUCKET).remove(ps.map(function(p){return p.path;}))).then(function(){done();},function(){done();});
+}
+document.addEventListener('click',function(e){
+  var el=e.target.closest('[data-act^="photo-"]');if(!el)return;
+  var a=el.dataset.act;
+  if(a==='photo-add'){fileTarget={kind:el.dataset.kind,id:el.dataset.id};fileInput.value='';fileInput.click();}
+  else if(a==='photo-open')openPhoto(el.dataset.kind,el.dataset.id,Number(el.dataset.i));
+  else if(a==='photo-del')deletePhoto(el.dataset.kind,el.dataset.id,Number(el.dataset.i));
+});
 
 })();
 </script>
