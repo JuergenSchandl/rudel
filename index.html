@@ -550,9 +550,10 @@ function viewEssen(){
 
 function viewEinkauf(){
   var todo=state.shop.filter(function(i){return !i.done;}),done=state.shop.filter(function(i){return i.done;});
-  var h='<div class="view-head"><div><h1>Einkauf</h1><p>'+todo.length+' offen. Wer im Geschäft steht, hakt ab.</p></div></div>';
+  var h='<div class="view-head"><div><h1>Einkauf</h1><p>'+todo.length+' offen. Du siehst nur Einträge, die für dich freigegeben sind.</p></div></div>';
   h+='<form class="add" data-form="shop" autocomplete="off"><input class="field" id="shop-text" name="text" placeholder="Was fehlt?" aria-label="Neuer Eintrag" maxlength="80"><button class="btn primary" type="submit">Dazu</button><div class="cats" role="radiogroup" aria-label="Bereich">'+
-    CATS.map(function(c,i){return '<label class="seg"><input type="radio" name="cat" id="shop-cat-'+i+'" value="'+c+'"'+(c===shopCat?' checked':'')+'><span>'+c+'</span></label>';}).join('')+'</div></form>';
+    CATS.map(function(c,i){return '<label class="seg"><input type="radio" name="cat" id="shop-cat-'+i+'" value="'+c+'"'+(c===shopCat?' checked':'')+'><span>'+c+'</span></label>';}).join('')+'</div>'+
+    '<div class="cats" role="group" aria-label="Wer sieht den Eintrag?"><span class="hint" style="align-self:center">Sichtbar für</span>'+PEOPLE.map(function(p){var on=shopVisNow().indexOf(p.id)>-1,mine=p.id===state.me;return '<label class="seg who p-'+p.id+'"><input type="checkbox" id="shop-vis-'+p.id+'" data-chg="shopvis" value="'+p.id+'"'+(on?' checked':'')+(mine?' disabled':'')+'><span>'+(mine?'Ich':p.name)+'</span></label>';}).join('')+'</div></form>';
   CATS.forEach(function(c){
     var items=todo.filter(function(i){return i.cat===c;});
     if(!items.length)return;
@@ -562,8 +563,19 @@ function viewEinkauf(){
   if(done.length)h+='<section class="sec"><div class="sec-head"><h2>Im Wagerl</h2><button type="button" class="btn small" data-act="clear-done">Erledigte entfernen</button></div><div class="card">'+done.map(shopRow).join('')+'</div></section>';
   return h;
 }
+function shopVisDefault(){
+  var saved=null;try{saved=JSON.parse(localStorage.getItem(KEY+':shopvis:'+state.me)||'null');}catch(e){}
+  if(Array.isArray(saved)&&saved.length)return saved;
+  return (state.me==='d'||state.me==='j')?['d','j']:[state.me];
+}
+function shopVisNow(){var v=shopVisDefault().filter(function(x){return ALL.indexOf(x)>-1;});if(v.indexOf(state.me)<0)v.push(state.me);return ALL.filter(function(x){return v.indexOf(x)>-1;});}
+function shopVisText(v){
+  if(!Array.isArray(v)||v.length>=PEOPLE.length)return '';
+  if(v.length===1&&v[0]===state.me)return 'Nur für dich';
+  return 'Sichtbar für '+PEOPLE.filter(function(p){return v.indexOf(p.id)>-1;}).map(function(p){return p.id===state.me?'dich':p.name;}).join(', ');
+}
 function shopRow(i){
-  return '<div class="row'+(i.done?' done':'')+'"><input class="check" type="checkbox" id="shop-'+i.id+'" data-chg="shop" data-id="'+i.id+'"'+(i.done?' checked':'')+'><label class="grow" for="shop-'+i.id+'"><span class="t">'+esc(i.text)+'</span></label>'+av(i.by)+'</div>';
+  return '<div class="row'+(i.done?' done':'')+'"><input class="check" type="checkbox" id="shop-'+i.id+'" data-chg="shop" data-id="'+i.id+'"'+(i.done?' checked':'')+'><label class="grow" for="shop-'+i.id+'"><span class="t">'+esc(i.text)+'</span>'+(shopVisText(i.vis)?'<span class="s" style="display:block">'+esc(shopVisText(i.vis))+'</span>':'')+'</label>'+av(i.by)+'</div>';
 }
 
 function viewWo(){
@@ -956,7 +968,7 @@ document.addEventListener('click',function(e){
   else if(act==='list-items'){
     var m=byId(state.meals,id);if(!m)return;
     var items=m.items.split(',').map(function(s){return s.trim();}).filter(Boolean);
-    items.forEach(function(t){state.shop.unshift({id:uid(),ts:Date.now(),text:t,cat:'Lebensmittel',by:m.shop||state.me,done:false});});
+    var lv=shopVisNow();items.forEach(function(t){state.shop.unshift({id:uid(),ts:Date.now(),text:t,cat:'Lebensmittel',by:m.shop||state.me,done:false,vis:lv.length<PEOPLE.length?lv:undefined});});
     m.listed=true;commit();toast(plural(items.length,'Zutat steht','Zutaten stehen')+' auf der Einkaufsliste.');
   }
   else if(act==='rsvp'){
@@ -984,6 +996,13 @@ document.addEventListener('change',function(e){
   if(chg==='pdfrange'){pdfRange=el.value;render(true);return;}
   if(chg==='pdffrom'){pdfFrom=el.value;render(true);return;}
   if(chg==='pdfto'){pdfTo=el.value;render(true);return;}
+  if(chg==='shopvis'){
+    var cur=shopVisNow(),id2=el.value;
+    if(el.checked&&cur.indexOf(id2)<0)cur.push(id2);
+    if(!el.checked)cur=cur.filter(function(x){return x!==id2;});
+    try{localStorage.setItem(KEY+':shopvis:'+state.me,JSON.stringify(cur));}catch(e){}
+    render(true);return;
+  }
   if(chg==='task'){var tk=byId(state.tasks,el.dataset.id);if(tk)tk.done=el.checked;commit();if(tk&&tk.done)toast('Erledigt. Der Countdown ist gestoppt.');}
   else if(chg==='shop'){var it=byId(state.shop,el.dataset.id);if(it)it.done=el.checked;commit();}
   else if(chg==='todo'){var t=byId(sitOf(el.dataset.key).todo,el.dataset.id);if(t)t.done=el.checked;commit();}
@@ -1004,7 +1023,8 @@ document.addEventListener('submit',function(e){
   if(kind==='shop'){
     if(!val('text'))return;
     shopCat=val('cat')||CATS[0];
-    state.shop.unshift({id:uid(),ts:Date.now(),text:val('text'),cat:shopCat,by:state.me,done:false});
+    var sv=shopVisNow();
+    state.shop.unshift({id:uid(),ts:Date.now(),text:val('text'),cat:shopCat,by:state.me,done:false,vis:sv.length<PEOPLE.length?sv:undefined});
     commit();refocus('shop-text');
   }else if(kind==='wish'){
     if(!val('text'))return;
@@ -1097,6 +1117,7 @@ function flatten(st){
   Object.keys(LIST).forEach(function(k){
     st[LIST[k]].forEach(function(x){
       if(k==='doc'){var pet=x.owner==='tiere'||x.owner==='fam';put(x.id,k,x,pet?null:x.owner,false,(pet||x.vis.length>=PEOPLE.length)?null:x.vis.slice().sort());}
+      else if(k==='shop')put(x.id,k,x,null,false,(Array.isArray(x.vis)&&x.vis.length<PEOPLE.length)?x.vis.slice().sort():null);
       else put(x.id,k,x);
     });
   });
