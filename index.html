@@ -1174,7 +1174,6 @@ function pushDiff(){
   var p=pending(state,last);
   if(!p.ups.length&&!p.dels.length){if(syncMode==='saving'||syncMode==='error')setSync('');return;}
   pushing=true;setSync('saving');
-  var notes=changeNotes(p,last);
   var sig={},stamp=new Date().toISOString();
   var rows=p.ups.map(function(r){sig[r.id]=canon(r);return {id:r.id,kind:r.kind,data:r.data,owner:r.owner,private:r.private,visible_to:r.visible_to,updated_by:CLIENT,updated_at:stamp};});
   var step=rows.length?sb.from('items').upsert(rows):Promise.resolve({error:null});
@@ -1185,7 +1184,6 @@ function pushDiff(){
   }).then(function(res){
     if(res.error)throw res.error;
     p.dels.forEach(function(id){delete last[id];});
-    queueNotes(notes);
     pushing=false;saveCache();setSync('');
     if(pushAgain){pushAgain=false;pushDiff();}
   }).catch(function(e){
@@ -1510,54 +1508,9 @@ document.addEventListener('click',function(e){
 var signOutPlain=signOut;
 signOut=function(){disablePush(true).then(signOutPlain,signOutPlain);};
 
-/* ---------- tell the others about my changes ----------
-   After my changes are saved, the app waits a few seconds for more and then asks the
-   reminder service to send one short message to everyone else who can see them. */
-var NOTE_KINDS={appt:1,shop:1,meal:1,task:1,away:1,doc:1,wish:1};
-var noteQueue=[],noteTimer=null;
-function changeNotes(p,lastMap){
-  var out=[];
-  p.ups.forEach(function(r){
-    if(!NOTE_KINDS[r.kind]||r.private)return;
-    var prev=null;try{prev=lastMap[r.id]?JSON.parse(lastMap[r.id]):null;}catch(e){}
-    if(!prev){out.push({id:r.id,action:'neu'});return;}
-    var a=prev.data||{},b=r.data||{};
-    if(r.kind==='shop')return;                       /* ticking off groceries stays quiet */
-    if(r.kind==='task'&&!a.done&&b.done){out.push({id:r.id,action:'erledigt'});return;}
-    if(r.kind==='meal'&&canon(a.inv||{})!==canon(b.inv||{})&&(b.inv||{})[state.me]&&b.by!==state.me){out.push({id:r.id,action:'antwort'});return;}
-    if((b.photos||[]).length>(a.photos||[]).length){out.push({id:r.id,action:'foto'});return;}
-    var strip=function(x){var c=JSON.parse(JSON.stringify(x));delete c.done;delete c.ts;delete c.listed;delete c.photos;return canon(c);};
-    if(strip(a)!==strip(b))out.push({id:r.id,action:'geändert'});
-  });
-  p.dels.forEach(function(id){
-    var prev=null;try{prev=lastMap[id]?JSON.parse(lastMap[id]):null;}catch(e){}
-    if(!prev||!NOTE_KINDS[prev.kind]||prev.private||prev.kind==='shop'||prev.kind==='wish')return;
-    out.push({id:id,action:'gelöscht',kind:prev.kind,data:prev.data,visible_to:prev.visible_to||null});
-  });
-  return out;
-}
-function queueNotes(list){
-  if(!list||!list.length)return;
-  list.forEach(function(n){
-    var i=noteQueue.findIndex(function(x){return x.id===n.id;});
-    if(i<0)noteQueue.push(n);
-    else if(noteQueue[i].action==='neu'&&n.action==='gelöscht')noteQueue.splice(i,1);   /* never seen by the others: say nothing */
-    else if(noteQueue[i].action==='neu')return;                                        /* still "neu" for the others */
-    else noteQueue[i]=n;
-  });
-  clearTimeout(noteTimer);noteTimer=setTimeout(flushNotes,6000);
-}
-function flushNotes(){
-  clearTimeout(noteTimer);noteTimer=null;
-  if(!noteQueue.length||!sb)return;
-  var batch=noteQueue;noteQueue=[];
-  Promise.resolve(sb.auth.getSession()).then(function(r){
-    var tok=r&&r.data&&r.data.session?r.data.session.access_token:'';
-    if(!tok)return;
-    return fetch(FN+'?changes',{method:'POST',keepalive:true,headers:{apikey:CFG.key,Authorization:'Bearer '+tok,'Content-Type':'application/json'},body:JSON.stringify({changes:batch})});
-  }).catch(function(e){if(window.console)console.error('Benachrichtigung',e);});
-}
-document.addEventListener('visibilitychange',function(){if(document.visibilityState==='hidden')flushNotes();});
+/* ---------- messages about the others' changes ----------
+   The database notices every change and the reminder service sends them out; this phone only
+   decides whether it wants those messages. */
 function changesWanted(){try{return localStorage.getItem(KEY+':changes')!=='0';}catch(e){return true;}}
 function setChangesWanted(on){
   try{localStorage.setItem(KEY+':changes',on?'1':'0');}catch(e){}

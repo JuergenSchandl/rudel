@@ -113,6 +113,27 @@ export function messageFor(author, lines) {
   return { title: `DJNP · ${NAMES[author] || ""}`, body: shown.join("\n") + (more > 0 ? `\nund ${more} weitere Änderung${more === 1 ? "" : "en"}` : "") };
 }
 
+// queue entries (oldest first) -> {author: [{action,row}]}; several edits of one entry become one line
+export function collapseQueue(entries) {
+  const per = {};
+  for (const e of entries || []) {
+    const items = (per[e.author] = per[e.author] || new Map());
+    const prev = items.get(e.item_id);
+    let action = e.action;
+    if (prev && prev.action === "neu") {
+      if (action === "gelöscht") { items.set(e.item_id, { drop: true }); continue; } // never seen by the others
+      if (action !== "antwort") action = "neu";
+    } else if (prev && prev.drop) continue;
+    items.set(e.item_id, { action, row: { kind: e.kind, data: e.data, private: false, visible_to: e.visible_to } });
+  }
+  const out = {};
+  for (const [author, items] of Object.entries(per)) {
+    const list = [...items.values()].filter((x) => !x.drop);
+    if (list.length) out[author] = list;
+  }
+  return out;
+}
+
 // ---- service ----
 async function vapidKeys(sb) {
   const { data } = await sb.from("push_keys").select("public_key, private_key").eq("id", 1).maybeSingle();
@@ -158,6 +179,24 @@ if (typeof Deno !== "undefined") Deno.serve(async (req) => {
       title: "DJNP", body: "Mitteilungen sind eingeschaltet. So kommen eure Erinnerungen an.", url: APP + "#aufgaben", tag: "rudel-test",
     });
     return json({ sent });
+  }
+
+  if (url.searchParams.has("flush")) {
+    // changes collected by the database; wait 20 seconds so that a burst of edits becomes one message
+    const cutoff = new Date(Date.now() - 20000).toISOString();
+    const { data: q, error: qe } = await sb.from("change_queue").select("*").lt("created_at", cutoff).order("id").limit(500);
+    if (qe) return json({ error: qe.message }, 500);
+    if (!q || !q.length) return json({ flushed: 0 });
+    await sb.from("change_queue").delete().in("id", q.map((e) => e.id));
+    let sent = 0, people = 0;
+    for (const [author, changes] of Object.entries(collapseQueue(q))) {
+      const per = changeLines(author, changes);
+      for (const p of Object.keys(per)) {
+        people++;
+        sent += await sendTo(sb, [p], { ...messageFor(author, per[p]), url: APP, tag: "djnp-aenderung-" + author }, true);
+      }
+    }
+    return json({ flushed: q.length, people, sent });
   }
 
   if (url.searchParams.has("changes")) {

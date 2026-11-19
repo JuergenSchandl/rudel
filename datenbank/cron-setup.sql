@@ -6,6 +6,7 @@ select cron.schedule('rudel-erinnerungen', '*/15 * * * *', $$
   select net.http_post(
     url := 'https://hbohrdbqptfzhzqybbpc.supabase.co/functions/v1/erinnerungen',
     headers := '{"Content-Type": "application/json"}'::jsonb,
-    body := '{}'::jsonb
+    body := '{}'::jsonb,
+    timeout_milliseconds := 30000
   )
 $$);
