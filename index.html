@@ -1260,6 +1260,7 @@ function start(personId,cached){
   gate.hidden=true;
   render(false);
   refresh();subscribe();
+  checkPush();
 }
 function enter(){
   showGate('<p>Lade eure Daten …</p>');
@@ -1432,6 +1433,7 @@ function checkPush(){
   if(!pushSupported()){pushInfo.checked=true;return;}
   swReady().then(function(reg){return reg.pushManager.getSubscription();}).then(function(s){
     pushInfo.checked=true;pushInfo.on=!!s&&Notification.permission==='granted';
+    if(pushInfo.on&&sb&&state.me)saveSub(s).catch(function(e){if(window.console)console.error('Mitteilungen',e);});
     if(view==='aufgaben')render(true);
   }).catch(function(){pushInfo.checked=true;});
 }
@@ -1449,31 +1451,48 @@ function pushSection(){
       '<div class="acts" style="margin-top:0"><button type="button" class="btn small" data-act="push-test"'+(pushInfo.busy?' disabled':'')+'>Test-Mitteilung schicken</button><button type="button" class="btn small ghost" data-act="push-off"'+(pushInfo.busy?' disabled':'')+'>Ausschalten</button></div>';
   }else{
     h+='<p>Schalte Mitteilungen ein, damit du Bescheid bekommst, wenn eine deiner Aufgaben fällig wird. Das gilt für dieses Gerät, jedes Handy schaltet es selbst ein.</p>'+
+      (pushInfo.step?'<p class="note">'+esc(pushInfo.step)+'</p>':'')+(pushInfo.err?'<p class="note warn">'+esc(pushInfo.err)+'</p>':'')+
       '<button type="button" class="btn primary" data-act="push-on"'+(pushInfo.busy||!pushInfo.checked?' disabled':'')+'>Mitteilungen einschalten</button>';
   }
   h+='<p class="hint">Erinnerungen kommen ab 8 Uhr morgens an den Tagen, die du bei der Aufgabe wählst, und einmal am Tag nach der Frist, wenn noch nicht abgehakt ist.</p></div></section>';
   return h;
 }
 function setPushBusy(b){pushInfo.busy=b;if(view==='aufgaben')render(true);}
+function withTimeout(promise,ms,msg){
+  return new Promise(function(res,rej){
+    var t=setTimeout(function(){rej({msg:msg});},ms);
+    Promise.resolve(promise).then(function(v){clearTimeout(t);res(v);},function(e){clearTimeout(t);rej(e);});
+  });
+}
+function pushStep(text){pushInfo.step=text;pushInfo.err='';if(view==='aufgaben')render(true);}
+/* keep the database in step with this phone: if the phone has a subscription, make sure it is saved */
+function saveSub(s){
+  return Promise.resolve(sb.from('push_subs').upsert([{endpoint:s.endpoint,person:state.me,sub:s.toJSON(),changes:changesWanted()}])).then(function(r){
+    if(r.error)throw {msg:'Das Handy konnte nicht in der Datenbank angemeldet werden.',detail:r.error.message||String(r.error)};
+  });
+}
 function enablePush(){
   setPushBusy(true);
-  Notification.requestPermission().then(function(p){
-    if(p!=='granted')throw {msg:'Ohne Erlaubnis kann DJNP keine Mitteilungen schicken.'};
-    return fetch(FN+'?key',{headers:{apikey:CFG.key}}).then(function(r){if(!r.ok)throw {msg:'Der Erinnerungsdienst ist gerade nicht erreichbar.'};return r.json();});
+  pushStep('Schritt 1 von 3: Erlaubnis wird angefragt. Bitte die Frage am Handy mit „Zulassen“ beantworten.');
+  withTimeout(Notification.requestPermission(),45000,'Die Frage nach der Erlaubnis ist nicht erschienen oder wurde nicht beantwortet. Am Android: Einstellungen → Apps → DJNP (oder Chrome) → Benachrichtigungen erlauben, dann hier nochmal tippen.').then(function(p){
+    if(p!=='granted')throw {msg:p==='denied'?'Mitteilungen wurden abgelehnt. Erlaube sie in den Einstellungen des Handys bei DJNP (Android: auch bei Chrome), dann hier nochmal tippen.':'Die Erlaubnis wurde nicht erteilt. Bitte nochmal tippen und „Zulassen“ wählen.'};
+    pushStep('Schritt 2 von 3: Handy wird beim Mitteilungsdienst angemeldet …');
+    return withTimeout(fetch(FN+'?key',{headers:{apikey:CFG.key}}).then(function(r){if(!r.ok)throw {msg:'Der Erinnerungsdienst ist gerade nicht erreichbar.',detail:'HTTP '+r.status};return r.json();}),20000,'Der Erinnerungsdienst antwortet nicht. Bitte Internetverbindung prüfen.');
   }).then(function(k){
-    return swReady().then(function(reg){
+    return withTimeout(swReady().then(function(reg){
       return reg.pushManager.getSubscription().then(function(old){return old?old.unsubscribe():null;}).then(function(){
         return reg.pushManager.subscribe({userVisibleOnly:true,applicationServerKey:b64ToBytes(k.publicKey)});
       });
-    });
+    }),30000,'Das Handy hat die Anmeldung beim Mitteilungsdienst nicht abgeschlossen. Bitte App ganz schließen, neu öffnen und nochmal versuchen.');
   }).then(function(s){
-    return Promise.resolve(sb.from('push_subs').upsert([{endpoint:s.endpoint,person:state.me,sub:s.toJSON(),changes:changesWanted()}])).then(function(r){
-      if(r.error){s.unsubscribe();throw {msg:'Das Gerät konnte nicht angemeldet werden.'};}
-    });
+    pushStep('Schritt 3 von 3: wird gespeichert …');
+    return withTimeout(saveSub(s).catch(function(e){s.unsubscribe();throw e;}),20000,'Speichern dauert zu lange. Bitte Internetverbindung prüfen.');
   }).then(function(){
-    pushInfo.on=true;setPushBusy(false);toast('Mitteilungen sind eingeschaltet.');
+    pushInfo.on=true;pushInfo.step='';setPushBusy(false);toast('Mitteilungen sind eingeschaltet.');
   }).catch(function(e){
-    setPushBusy(false);toast(e&&e.msg?e.msg:'Mitteilungen konnten nicht eingeschaltet werden.');
+    pushInfo.step='';
+    pushInfo.err=(e&&e.msg?e.msg:'Mitteilungen konnten nicht eingeschaltet werden.')+((e&&(e.detail||e.message))?' ('+(e.detail||e.message)+')':(e&&e.name?' ('+e.name+')':''));
+    setPushBusy(false);
     if(window.console)console.error('Mitteilungen',e);
   });
 }
