@@ -129,6 +129,7 @@ main:focus{outline:none}
 .acts{display:flex;flex-wrap:wrap;gap:6px;margin-top:9px;align-items:center}
 
 .btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;border:1px solid var(--line);background:var(--surface);color:var(--ink);font-weight:600;border-radius:999px;padding:9px 15px;cursor:pointer;text-decoration:none;white-space:nowrap}
+.btn[disabled]{opacity:.55;cursor:default}
 .btn.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
 .btn.small{padding:5px 11px;font-size:.82rem}
 .btn.ghost{border-color:transparent;background:none;color:var(--muted);padding-inline:6px}
@@ -299,6 +300,7 @@ button.sync{background:none;border:0;padding:0;cursor:pointer;text-decoration:un
 <script>
 (function(){
 'use strict';
+var APP_VERSION='19.11. 21:26';
 
 var PEOPLE=[{id:'d',name:'Dagmar'},{id:'j',name:'Jürgen'},{id:'n',name:'Nina'},{id:'p',name:'Philip'}];
 var PETS=[{name:'Ivie',kind:'Hund'},{name:'Frida',kind:'Hund'},{name:'Lilli',kind:'Schwein'}];
@@ -1297,7 +1299,8 @@ document.addEventListener('visibilitychange',function(){
   today=iso(new Date());
   refresh();
 });
-if('serviceWorker' in navigator&&location.protocol==='https:')navigator.serviceWorker.register('sw.js').catch(function(){});
+var swState='nicht gestartet';
+if('serviceWorker' in navigator&&location.protocol==='https:'){swState='startet';navigator.serviceWorker.register('sw.js').then(function(){swState='registriert';},function(e){swState='Fehler: '+(e&&e.message?e.message:String(e));});}
 boot();
 
 /* ---------- photos ----------
@@ -1427,7 +1430,17 @@ function pushSupported(){return 'serviceWorker' in navigator&&'PushManager' in w
 function isIos(){return /iPhone|iPad|iPod/.test(navigator.userAgent)||(navigator.platform==='MacIntel'&&navigator.maxTouchPoints>1);}
 function isStandalone(){return (window.matchMedia&&matchMedia('(display-mode: standalone)').matches)||navigator.standalone===true;}
 function b64ToBytes(s){var p='='.repeat((4-s.length%4)%4),b=atob((s+p).replace(/-/g,'+').replace(/_/g,'/')),a=new Uint8Array(b.length);for(var i=0;i<b.length;i++)a[i]=b.charCodeAt(i);return a;}
-function swReady(){return navigator.serviceWorker.ready;}
+function swReady(){
+  /* wait for the app's background service; if it never comes, try starting it once more */
+  return withTimeout(navigator.serviceWorker.ready,8000,'').catch(function(){
+    return navigator.serviceWorker.register('sw.js').then(function(){return withTimeout(navigator.serviceWorker.ready,8000,'');});
+  }).catch(function(e){throw {msg:'Der Hintergrunddienst der App startet auf diesem Handy nicht. Bitte App ganz schließen und neu öffnen. Hilft das nicht: App deinstallieren und über Chrome neu installieren.',detail:'Dienst: '+swState+(e&&e.message?', '+e.message:'')};});
+}
+function pushDiag(){
+  var perm='Notification' in window?Notification.permission:'fehlt';
+  var permDe={granted:'erlaubt',denied:'blockiert','default':'noch nicht gefragt'}[perm]||perm;
+  return 'Stand '+APP_VERSION+' · Erlaubnis: '+permDe+' · Hintergrunddienst: '+(navigator.serviceWorker&&navigator.serviceWorker.controller?'aktiv':swState)+' · Push: '+('PushManager' in window?'ja':'nein')+' · '+(isStandalone()?'als App':'im Browser');
+}
 
 function checkPush(){
   if(!pushSupported()){pushInfo.checked=true;return;}
@@ -1452,8 +1465,9 @@ function pushSection(){
   }else{
     h+='<p>Schalte Mitteilungen ein, damit du Bescheid bekommst, wenn eine deiner Aufgaben fällig wird. Das gilt für dieses Gerät, jedes Handy schaltet es selbst ein.</p>'+
       (pushInfo.step?'<p class="note">'+esc(pushInfo.step)+'</p>':'')+(pushInfo.err?'<p class="note warn">'+esc(pushInfo.err)+'</p>':'')+
-      '<button type="button" class="btn primary" data-act="push-on"'+(pushInfo.busy||!pushInfo.checked?' disabled':'')+'>Mitteilungen einschalten</button>';
+      '<button type="button" class="btn primary" data-act="push-on"'+(pushInfo.busy?' disabled':'')+'>'+(pushInfo.busy?'Bitte warten …':'Mitteilungen einschalten')+'</button>';
   }
+  h+='<p class="hint" style="font-size:.72rem">'+esc(pushDiag())+'</p>';
   h+='<p class="hint">Erinnerungen kommen ab 8 Uhr morgens an den Tagen, die du bei der Aufgabe wählst, und einmal am Tag nach der Frist, wenn noch nicht abgehakt ist.</p></div></section>';
   return h;
 }

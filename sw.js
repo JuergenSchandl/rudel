@@ -1,6 +1,6 @@
 /* Hält die App startfähig, wenn gerade kein Netz da ist, und zeigt Erinnerungen an.
    Online wird immer zuerst die neueste Version geladen, damit Änderungen sofort ankommen. */
-const CACHE = 'rudel-shell-v5';
+const CACHE = 'rudel-shell-v6';
 self.addEventListener('install', () => self.skipWaiting());
 self.addEventListener('activate', (e) => e.waitUntil(self.clients.claim()));
 self.addEventListener('fetch', (e) => {
