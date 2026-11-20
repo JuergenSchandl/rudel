@@ -193,6 +193,8 @@ button.sync{background:none;border:0;padding:0;cursor:pointer;text-decoration:un
 .ph.pdf{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;background:var(--warn-bg);color:var(--warn);padding:4px}
 .ph.pdf b{font-size:.8rem}
 .ph.pdf small{font-size:.6rem;line-height:1.1;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--ink)}
+.ph-cam{flex:none;width:36px;height:36px;border-radius:50%;border:1px solid var(--line);background:var(--surface);color:var(--muted);display:grid;place-items:center;cursor:pointer;padding:0}
+.ph-cam svg{width:19px;height:19px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linejoin:round}
 .ph-wait{display:block;width:100%;height:100%;background:color-mix(in srgb,var(--ink) 8%,transparent)}
 .viewer img{display:block;width:100%;height:auto;max-height:62vh;object-fit:contain;border-radius:12px;background:var(--bg)}
 .doc-acts{display:flex;flex-direction:column;gap:4px;align-items:flex-end}
@@ -300,7 +302,7 @@ button.sync{background:none;border:0;padding:0;cursor:pointer;text-decoration:un
 <script>
 (function(){
 'use strict';
-var APP_VERSION='19.11. 21:26';
+var APP_VERSION='20.11. 15:30';
 
 var PEOPLE=[{id:'d',name:'Dagmar'},{id:'j',name:'Jürgen'},{id:'n',name:'Nina'},{id:'p',name:'Philip'}];
 var PETS=[{name:'Ivie',kind:'Hund'},{name:'Frida',kind:'Hund'},{name:'Lilli',kind:'Schwein'}];
@@ -552,7 +554,7 @@ function viewEssen(){
 
 function viewEinkauf(){
   var todo=state.shop.filter(function(i){return !i.done;}),done=state.shop.filter(function(i){return i.done;});
-  var h='<div class="view-head"><div><h1>Einkauf</h1><p>'+todo.length+' offen. Du siehst nur Einträge, die für dich freigegeben sind.</p></div></div>';
+  var h='<div class="view-head"><div><h1>Einkauf</h1><p>'+todo.length+' offen. Mit der Kamera kannst du zeigen, welches Produkt gemeint ist. Das Foto verschwindet beim Abhaken.</p></div></div>';
   h+='<form class="add" data-form="shop" autocomplete="off"><input class="field" id="shop-text" name="text" placeholder="Was fehlt?" aria-label="Neuer Eintrag" maxlength="80"><button class="btn primary" type="submit">Dazu</button><div class="cats" role="radiogroup" aria-label="Bereich">'+
     CATS.map(function(c,i){return '<label class="seg"><input type="radio" name="cat" id="shop-cat-'+i+'" value="'+c+'"'+(c===shopCat?' checked':'')+'><span>'+c+'</span></label>';}).join('')+'</div>'+
     '<div class="cats" role="group" aria-label="Wer sieht den Eintrag?"><span class="hint" style="align-self:center">Sichtbar für</span>'+PEOPLE.map(function(p){var on=shopVisNow().indexOf(p.id)>-1,mine=p.id===state.me;return '<label class="seg who p-'+p.id+'"><input type="checkbox" id="shop-vis-'+p.id+'" data-chg="shopvis" value="'+p.id+'"'+(on?' checked':'')+(mine?' disabled':'')+'><span>'+(mine?'Ich':p.name)+'</span></label>';}).join('')+'</div></form>';
@@ -577,7 +579,7 @@ function shopVisText(v){
   return 'Sichtbar für '+PEOPLE.filter(function(p){return v.indexOf(p.id)>-1;}).map(function(p){return p.id===state.me?'dich':p.name;}).join(', ');
 }
 function shopRow(i){
-  return '<div class="row'+(i.done?' done':'')+'"><input class="check" type="checkbox" id="shop-'+i.id+'" data-chg="shop" data-id="'+i.id+'"'+(i.done?' checked':'')+'><label class="grow" for="shop-'+i.id+'"><span class="t">'+esc(i.text)+'</span>'+(shopVisText(i.vis)?'<span class="s" style="display:block">'+esc(shopVisText(i.vis))+'</span>':'')+'</label>'+av(i.by)+'</div>';
+  return '<div class="row'+(i.done?' done':'')+'"><input class="check" type="checkbox" id="shop-'+i.id+'" data-chg="shop" data-id="'+i.id+'"'+(i.done?' checked':'')+'><div class="grow"><label for="shop-'+i.id+'" style="display:block;cursor:pointer"><span class="t">'+esc(i.text)+'</span>'+(shopVisText(i.vis)?'<span class="s" style="display:block">'+esc(shopVisText(i.vis))+'</span>':'')+'</label>'+(i.done?'':photoStrip(i,'shop'))+'</div>'+(i.done?'':shopPhotoButton(i))+av(i.by)+'</div>';
 }
 
 function viewWo(){
@@ -985,7 +987,7 @@ document.addEventListener('click',function(e){
   else if(act==='del-doc'){dropWithPhotos('doc',id,function(){state.docs=without(state.docs,id);commit();toast('Eintrag gelöscht.');});}
   else if(act==='del-note'){state.notes[state.me]=without(state.notes[state.me]||[],id);commit();}
   else if(act==='del-bp'){var b=bpOf(state.me);b.rows=without(b.rows,id);commit();}
-  else if(act==='clear-done'){state.shop=state.shop.filter(function(i){return !i.done;});commit();}
+  else if(act==='clear-done'){dropShopPhotos(state.shop.filter(function(i){return i.done;}));state.shop=state.shop.filter(function(i){return !i.done;});commit();}
   else if(act==='night'){
     var s=sitOf(el.dataset.key),d=el.dataset.d,order=['n','p',null],nx=order[(order.indexOf(s.nights[d]||null)+1)%3];
     if(nx)s.nights[d]=nx;else delete s.nights[d];
@@ -1006,7 +1008,7 @@ document.addEventListener('change',function(e){
     render(true);return;
   }
   if(chg==='task'){var tk=byId(state.tasks,el.dataset.id);if(tk)tk.done=el.checked;commit();if(tk&&tk.done)toast('Erledigt. Der Countdown ist gestoppt.');}
-  else if(chg==='shop'){var it=byId(state.shop,el.dataset.id);if(it)it.done=el.checked;commit();}
+  else if(chg==='shop'){var it=byId(state.shop,el.dataset.id);if(it){it.done=el.checked;if(el.checked&&it.photos&&it.photos.length){dropShopPhotos([it]);toast('Abgehakt. Das Produktfoto wurde gelöscht.');}}commit();}
   else if(chg==='todo'){var t=byId(sitOf(el.dataset.key).todo,el.dataset.id);if(t)t.done=el.checked;commit();}
 });
 document.addEventListener('submit',function(e){
@@ -1312,7 +1314,9 @@ var fileInput=document.createElement('input');
 fileInput.type='file';fileInput.accept='image/*';fileInput.id='photo-file';fileInput.hidden=true;
 document.body.appendChild(fileInput);
 
-function photoList(kind){return kind==='doc'?state.docs:state.meals;}
+function photoList(kind){return kind==='doc'?state.docs:kind==='shop'?state.shop:state.meals;}
+var PHOTO_DIR={doc:'docs/',meal:'meals/',shop:'shop/'};
+function photoTitle(kind,item){return kind==='doc'?item.kind:kind==='shop'?item.text:item.dish;}
 function photoStrip(item,kind){
   var ps=item.photos||[];
   if(!ps.length)return '';
@@ -1323,13 +1327,13 @@ function photoStrip(item,kind){
   }).join('')+'</div>';
 }
 function canAddPhoto(kind,item){return true;}
-function photoButton(kind,item){return canAddPhoto(kind,item)?'<button type="button" class="btn small" data-act="photo-add" data-kind="'+kind+'" data-id="'+item.id+'" aria-label="'+(kind==='doc'?'Foto oder PDF':'Foto')+' zu '+esc(kind==='doc'?item.kind:item.dish)+' hinzufügen">'+(kind==='doc'?'Foto / PDF':'Foto')+'</button>':'';}
+function photoButton(kind,item){return canAddPhoto(kind,item)?'<button type="button" class="btn small" data-act="photo-add" data-kind="'+kind+'" data-id="'+item.id+'" aria-label="'+(kind==='doc'?'Foto oder PDF':'Foto')+' zu '+esc(photoTitle(kind,item))+' hinzufügen">'+(kind==='doc'?'Foto / PDF':'Foto')+'</button>':'';}
 
 /* ask for short-lived links to the pictures on screen, then draw them */
 function wantUrls(){
   if(!sb||!state.me)return;
   var now=Date.now(),need=[];
-  state.docs.concat(state.meals).forEach(function(it){(it.photos||[]).forEach(function(p){
+  state.docs.concat(state.meals,state.shop).forEach(function(it){(it.photos||[]).forEach(function(p){
     var u=urls[p.path];
     if((!u||u.exp<now+60000)&&!urlBusy[p.path]){need.push(p.path);urlBusy[p.path]=true;}
   });});
@@ -1363,7 +1367,7 @@ function uploadPhoto(t,file){
   var isPdf=t.kind==='doc'&&(file.type==='application/pdf'||/\.pdf$/i.test(file.name||''));
   if(isPdf&&file.size>10485760){toast('Das PDF ist größer als 10 MB und zu groß für die App.');return;}
   toast(isPdf?'PDF wird hochgeladen …':'Foto wird hochgeladen …');
-  var path=(t.kind==='doc'?'docs/':'meals/')+t.id+'/'+uid()+(isPdf?'.pdf':'.jpg');
+  var path=PHOTO_DIR[t.kind]+t.id+'/'+uid()+(isPdf?'.pdf':'.jpg');
   (isPdf?Promise.resolve({blob:file,pdf:true}):shrinkPhoto(file)).then(function(s){
     /* the entry has to be in the database first: the storage rules check it */
     var row=flatten(state)[t.id];
@@ -1392,7 +1396,7 @@ fileInput.addEventListener('change',function(){
 
 function openPhoto(kind,id,i){
   var item=byId(photoList(kind),id);if(!item||!item.photos||!item.photos[i])return;
-  var p=item.photos[i],u=urls[p.path],title=kind==='doc'?item.kind:item.dish;
+  var p=item.photos[i],u=urls[p.path],title=photoTitle(kind,item);
   openSheet('<h2 id="sheet-title">'+esc(title)+'</h2><div class="viewer">'+(p.pdf?(u?'<a class="btn primary" href="'+esc(u.url)+'" target="_blank" rel="noopener">PDF öffnen: '+esc(p.name||'Dokument')+'</a>':'<p class="hint">Das PDF wird vorbereitet …</p>'):(u?'<img src="'+esc(u.url)+'" alt="Foto: '+esc(title)+'">':'<p class="hint">Das Foto wird geladen …</p>'))+'</div>'+
     '<p class="hint">Hochgeladen von '+esc(person(p.by)?person(p.by).name:'')+(p.ts?' am '+fmtDay(iso(new Date(p.ts))):'')+'.</p>'+
     '<div class="actions">'+(canAddPhoto(kind,item)?'<button type="button" class="btn ghost" data-act="photo-del" data-kind="'+kind+'" data-id="'+id+'" data-i="'+i+'">'+(p.pdf?'PDF löschen':'Foto löschen')+'</button>':'')+'<button type="button" class="btn" data-act="close">Schließen</button></div>');
@@ -1406,6 +1410,15 @@ function deletePhoto(kind,id,i){
     delete urls[p.path];
     closeSheet();commit();toast('Foto gelöscht.');
   }).catch(function(){toast('Das Foto konnte nicht gelöscht werden. Bitte prüf die Verbindung.');});
+}
+/* a product photo is only needed until the item is in the cart: remove it right when it is ticked off */
+function dropShopPhotos(items){
+  var paths=[];
+  items.forEach(function(it){(it.photos||[]).forEach(function(p){paths.push(p.path);delete urls[p.path];});it.photos=[];});
+  if(paths.length&&sb)Promise.resolve(sb.storage.from(BUCKET).remove(paths)).catch(function(e){if(window.console)console.error('Foto',e);});
+}
+function shopPhotoButton(item){
+  return '<button type="button" class="ph-cam" data-act="photo-add" data-kind="shop" data-id="'+item.id+'" aria-label="Foto vom Produkt zu '+esc(item.text)+' machen"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/></svg></button>';
 }
 /* deleting an entry removes its pictures first, while the entry still proves who may delete them */
 function dropWithPhotos(kind,id,done){
