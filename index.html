@@ -302,7 +302,7 @@ button.sync{background:none;border:0;padding:0;cursor:pointer;text-decoration:un
 <script>
 (function(){
 'use strict';
-var APP_VERSION='20.11. 15:30';
+var APP_VERSION='20.11. 15:44';
 
 var PEOPLE=[{id:'d',name:'Dagmar'},{id:'j',name:'Jürgen'},{id:'n',name:'Nina'},{id:'p',name:'Philip'}];
 var PETS=[{name:'Ivie',kind:'Hund'},{name:'Frida',kind:'Hund'},{name:'Lilli',kind:'Schwein'}];
@@ -1429,7 +1429,22 @@ function dropWithPhotos(kind,id,done){
 document.addEventListener('click',function(e){
   var el=e.target.closest('[data-act^="photo-"]');if(!el)return;
   var a=el.dataset.act;
-  if(a==='photo-add'){fileTarget={kind:el.dataset.kind,id:el.dataset.id};fileInput.accept=el.dataset.kind==='doc'?'image/*,application/pdf':'image/*';fileInput.value='';fileInput.click();}
+  if(a==='photo-add'){
+    /* newer Android only offers the gallery unless the camera is asked for explicitly, so ask which one */
+    var kind=el.dataset.kind,it=byId(photoList(kind),el.dataset.id);if(!it)return;
+    openSheet('<h2 id="sheet-title">'+(kind==='doc'?'Foto oder PDF':'Foto')+': '+esc(photoTitle(kind,it))+'</h2>'+
+      '<div class="actions" style="flex-direction:column;align-items:stretch">'+
+      '<button type="button" class="btn primary" data-act="photo-pick" data-src="camera" data-kind="'+kind+'" data-id="'+it.id+'">Foto aufnehmen</button>'+
+      '<button type="button" class="btn" data-act="photo-pick" data-src="gallery" data-kind="'+kind+'" data-id="'+it.id+'">'+(kind==='doc'?'Aus Galerie oder Dateien wählen':'Aus Galerie wählen')+'</button>'+
+      '<button type="button" class="btn ghost" data-act="close">Abbrechen</button></div>');
+  }
+  else if(a==='photo-pick'){
+    var cam=el.dataset.src==='camera';
+    fileTarget={kind:el.dataset.kind,id:el.dataset.id};
+    fileInput.accept=cam?'image/*':(el.dataset.kind==='doc'?'image/*,application/pdf':'image/*');
+    if(cam)fileInput.setAttribute('capture','environment');else fileInput.removeAttribute('capture');
+    fileInput.value='';fileInput.click();closeSheet();
+  }
   else if(a==='photo-open')openPhoto(el.dataset.kind,el.dataset.id,Number(el.dataset.i));
   else if(a==='photo-del')deletePhoto(el.dataset.kind,el.dataset.id,Number(el.dataset.i));
 });
