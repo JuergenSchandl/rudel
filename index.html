@@ -195,6 +195,15 @@ button.sync{background:none;border:0;padding:0;cursor:pointer;text-decoration:un
 .ph.pdf small{font-size:.6rem;line-height:1.1;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--ink)}
 .ph-cam{flex:none;width:36px;height:36px;border-radius:50%;border:1px solid var(--line);background:var(--surface);color:var(--muted);display:grid;place-items:center;cursor:pointer;padding:0}
 .ph-cam svg{width:19px;height:19px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linejoin:round}
+.bp-row{border-left:4px solid transparent;padding-left:8px;margin-left:-10px;flex-wrap:wrap}
+.bp-warn{flex-basis:100%;font-size:.85rem;font-weight:600;color:#A3281C;background:#FADBD8;border-radius:10px;padding:8px 10px;margin-top:-2px}
+.bp-row.bp-green{border-left-color:var(--ok)}
+.bp-row.bp-yellow{border-left-color:#C99A06}
+.bp-row.bp-red{border-left-color:#C0392B}
+.bp-pill{display:inline-block;font-size:.72rem;font-weight:700;padding:1px 8px;border-radius:999px;vertical-align:middle}
+.bp-pill.bp-green{background:var(--ok-bg);color:var(--ok)}
+.bp-pill.bp-yellow{background:#FFF3C4;color:#7A5B00}
+.bp-pill.bp-red{background:#FADBD8;color:#A3281C}
 .ph-wait{display:block;width:100%;height:100%;background:color-mix(in srgb,var(--ink) 8%,transparent)}
 .viewer img{display:block;width:100%;height:auto;max-height:62vh;object-fit:contain;border-radius:12px;background:var(--bg)}
 .doc-acts{display:flex;flex-direction:column;gap:4px;align-items:flex-end}
@@ -302,7 +311,7 @@ button.sync{background:none;border:0;padding:0;cursor:pointer;text-decoration:un
 <script>
 (function(){
 'use strict';
-var APP_VERSION='20.11. 15:44';
+var APP_VERSION='22.11. 18:03';
 
 var PEOPLE=[{id:'d',name:'Dagmar'},{id:'j',name:'Jürgen'},{id:'n',name:'Nina'},{id:'p',name:'Philip'}];
 var PETS=[{name:'Ivie',kind:'Hund'},{name:'Frida',kind:'Hund'},{name:'Lilli',kind:'Schwein'}];
@@ -336,7 +345,7 @@ function person(id){for(var i=0;i<PEOPLE.length;i++)if(PEOPLE[i].id===id)return 
 var ALL=PEOPLE.map(function(p){return p.id;});
 function mkTodo(key){return TODO.map(function(t,i){return {id:key+'-t'+i,text:t,done:false};});}
 
-function emptyState(){return {me:null,tasks:[],appts:[],shop:[],away:[],meals:[],wishes:[],sit:{},docs:[],bp:{},notes:{}};}
+function emptyState(){return {me:null,tasks:[],appts:[],shop:[],away:[],meals:[],wishes:[],sit:{},docs:[],bp:{},bpgoal:{},notes:{}};}
 function save(){saveCache();pushDiff();}
 
 function awayOf(pid,d){
@@ -699,7 +708,19 @@ function viewDokumente(){
 }
 
 function bpOf(id){if(!state.bp[id])state.bp[id]={rows:[]};return state.bp[id];}
-function bpSorted(rows){return rows.slice().sort(function(a,b){return (b.date+b.time).localeCompare(a.date+a.time);});}
+function bpSorted(rows){return rows.slice().sort(function(a,b){return (b.date+b.time).localeCompare(a.date+a.time)||((b.ts||0)-(a.ts||0));});}
+/* colours are an orientation against the person's own goal (default 140/90), not a medical judgement */
+function bpGoal(){var g=state.bpgoal&&state.bpgoal[state.me];return g&&g.sys>0&&g.dia>0?g:{sys:140,dia:90};}
+function bpClass(sys,dia,g){
+  g=g||bpGoal();
+  if(sys>=180||dia>=110)return {c:'red',w:'sehr hoch',warn:true};
+  if(sys>=g.sys+20||dia>=g.dia+10)return {c:'red',w:'hoch'};
+  if(sys>g.sys||dia>g.dia)return {c:'yellow',w:'erhöht'};
+  if(sys<90||dia<60)return {c:'yellow',w:'niedrig'};
+  return {c:'green',w:'im Ziel'};
+}
+function bpPill(k){return '<span class="bp-pill bp-'+k.c+'">'+k.w+'</span>';}
+var BP_WARN='Sehr hoch: zeitnah ärztlich abklären. Bei Beschwerden wie Brustschmerz, Atemnot, Lähmungen oder Sehstörungen sofort Notruf 144 (in der EU auch 112).';
 function bpAvg(rows){
   var s=bpSorted(rows).slice(0,7);
   if(!s.length)return '';
@@ -730,14 +751,15 @@ function makePdf(pages){
   return bytes;
 }
 /* rows: newest first, each {date:'YYYY-MM-DD',time,sys,dia,pulse} */
-function bpPdf(name,rows,madeOn){
-  var pages=[],c='',y=0,X=[56,180,270,370,470];
+function bpPdf(name,rows,madeOn,goal){
+  goal=goal||{sys:140,dia:90};
+  var pages=[],c='',y=0,X=[56,160,215,305,395,445];
   function dmy(s){var a=s.split('-');return a[2]+'.'+a[1]+'.'+a[0];}
   function wd(s){var a=s.split('-').map(Number);return ['So','Mo','Di','Mi','Do','Fr','Sa'][new Date(a[0],a[1]-1,a[2]).getDay()];}
   function txt(x,yy,t,size,bold){c+='BT /'+(bold?'F2':'F1')+' '+size+' Tf '+x+' '+yy+' Td ('+pdfEsc(t)+') Tj ET\n';}
   function rule(yy,w){c+=w+' w 56 '+yy+' m 539 '+yy+' l S\n';}
   function head(){
-    ['Datum','Uhrzeit','Oberer Wert','Unterer Wert','Puls'].forEach(function(t,i){txt(X[i],y,t,10,true);});
+    ['Datum','Uhrzeit','Oberer Wert','Unterer Wert','Puls','Bewertung'].forEach(function(t,i){txt(X[i],y,t,10,true);});
     y-=7;rule(y,0.8);y-=17;
   }
   function page(){
@@ -751,7 +773,9 @@ function bpPdf(name,rows,madeOn){
   txt(56,y,name,13,false);y-=26;
   txt(56,y,'Zeitraum: '+dmy(rows[rows.length-1].date)+' bis '+dmy(rows[0].date),10,false);y-=15;
   txt(56,y,'Messungen: '+rows.length,10,false);y-=15;
-  txt(56,y,'Durchschnitt: '+Math.round(a/rows.length)+'/'+Math.round(b/rows.length)+' mmHg',10,false);y-=32;
+  var aS=Math.round(a/rows.length),aD=Math.round(b/rows.length);
+  txt(56,y,'Durchschnitt: '+aS+'/'+aD+' mmHg ('+bpClass(aS,aD,goal).w+')',10,false);y-=15;
+  txt(56,y,'Persönlicher Zielwert: '+goal.sys+'/'+goal.dia+' mmHg. Bewertung: im Ziel / erhöht bis +19/+9 / hoch ab +20/+10, niedrig unter 90/60.',9,false);y-=30;
   head();
   rows.forEach(function(r){
     if(y<70){page();head();}
@@ -760,6 +784,7 @@ function bpPdf(name,rows,madeOn){
     txt(X[2],y,r.sys+' mmHg',11,true);
     txt(X[3],y,r.dia+' mmHg',11,true);
     txt(X[4],y,r.pulse?String(r.pulse):'-',11,false);
+    var bk=bpClass(r.sys,r.dia,goal);txt(X[5],y,bk.w,11,bk.c!=='green');
     y-=7;c+='0.8 G\n';rule(y,0.4);c+='0 G\n';y-=15;
   });
   pages.push(c);
@@ -788,7 +813,7 @@ function saveFile(name,mime,data){
 function exportPdf(){
   var rows=pdfRows(),name=person(state.me).name;
   if(!rows.length){toast('In diesem Zeitraum gibt es keine Messung.');return;}
-  saveFile('Blutdruck-'+name.replace(/ä/g,'ae').replace(/ö/g,'oe').replace(/ü/g,'ue').replace(/[^A-Za-z0-9]/g,'')+'-'+today+'.pdf','application/pdf',bpPdf(name,rows,today));
+  saveFile('Blutdruck-'+name.replace(/ä/g,'ae').replace(/ö/g,'oe').replace(/ü/g,'ue').replace(/[^A-Za-z0-9]/g,'')+'-'+today+'.pdf','application/pdf',bpPdf(name,rows,today,bpGoal()));
 }
 function icsEsc(t){return String(t||'').replace(/\\/g,'\\\\').replace(/;/g,'\\;').replace(/,/g,'\\,').replace(/\r?\n/g,'\\n');}
 function icsFor(a){
@@ -810,10 +835,13 @@ function viewPrivat(){
   var h='<a class="back" href="#mehr">‹ Mehr</a><div class="view-head"><div><h1>Privat</h1><p>Nur für '+esc(name)+'.</p></div></div>';
   h+='<p class="note">Diese Seite sieht nur '+esc(name)+'. Die Einträge sind in der Datenbank so geschützt, dass nur deine eigene Anmeldung sie lesen kann.</p>';
 
-  h+='<section class="sec"><div class="sec-head"><h2>Mein Blutdruck</h2></div>'+(mine.rows.length?'<p class="hint">'+esc(bpAvg(mine.rows))+'</p>':'');
+  var goal=bpGoal(),avgRows=bpSorted(mine.rows).slice(0,7),avgK=null;
+  if(avgRows.length){var sa=0,da=0;avgRows.forEach(function(r){sa+=r.sys;da+=r.dia;});avgK=bpClass(Math.round(sa/avgRows.length),Math.round(da/avgRows.length),goal);}
+  h+='<section class="sec"><div class="sec-head"><h2>Mein Blutdruck</h2><span class="count">Ziel '+goal.sys+'/'+goal.dia+'</span></div>'+(mine.rows.length?'<p class="hint">'+esc(bpAvg(mine.rows))+' '+bpPill(avgK)+'</p>':'');
   h+='<form class="bp-add" data-form="bp" novalidate><label class="l" for="bp-sys">Oberer Wert<input class="field" type="number" inputmode="numeric" id="bp-sys" name="sys" min="60" max="260" placeholder="130"></label><label class="l" for="bp-dia">Unterer Wert<input class="field" type="number" inputmode="numeric" id="bp-dia" name="dia" min="30" max="160" placeholder="85"></label><label class="l" for="bp-pulse">Puls (optional)<input class="field" type="number" inputmode="numeric" id="bp-pulse" name="pulse" min="30" max="220" placeholder="70"></label><p class="err" hidden></p><button class="btn primary" type="submit">Messung eintragen</button></form>';
   h+='<div class="card">'+(mine.rows.length?bpSorted(mine.rows).slice(0,7).map(function(r){
-    return '<div class="row"><div class="time wide">'+esc(fmtRel(r.date))+'<small>'+esc(r.time)+' Uhr</small></div><div class="grow"><span class="big">'+r.sys+'/'+r.dia+'</span>'+(r.pulse?' <span class="s">Puls '+r.pulse+'</span>':'')+'</div><button type="button" class="btn small ghost" data-act="del-bp" data-id="'+r.id+'" aria-label="Messung vom '+fmtDay(r.date)+' löschen">Löschen</button></div>';
+    var k=bpClass(r.sys,r.dia,goal);
+    return '<div class="row bp-row bp-'+k.c+'"><div class="time wide">'+esc(fmtRel(r.date))+'<small>'+esc(r.time)+' Uhr</small></div><div class="grow"><span class="big">'+r.sys+'/'+r.dia+'</span>'+(r.pulse?' <span class="s">Puls '+r.pulse+'</span>':'')+' '+bpPill(k)+'</div><button type="button" class="btn small ghost" data-act="del-bp" data-id="'+r.id+'" aria-label="Messung vom '+fmtDay(r.date)+' löschen">Löschen</button>'+(k.warn?'<p class="bp-warn">'+esc(BP_WARN)+'</p>':'')+'</div>';
   }).join(''):'<p class="empty">Noch keine Messung eingetragen.</p>')+'</div>';
   if(mine.rows.length){
     {
@@ -824,7 +852,8 @@ function viewPrivat(){
       h+='<p class="hint">Das PDF enthält die Messungen des gewählten Zeitraums mit Datum, Uhrzeit und Durchschnitt, zum Beispiel für den Arztbesuch. Es landet nur auf deinem Gerät.</p>';
     }
   }
-  h+='<p class="hint">Die App zeigt nur an, was eingetragen wurde, und bewertet die Werte nicht. Weitere Werte wie Gewicht oder Blutzucker lassen sich genauso ergänzen.</p></section>';
+  h+='<form class="bp-add" data-form="bpgoal" novalidate style="margin-top:6px"><label class="l" for="goal-sys">Zielwert oben<input class="field" type="number" inputmode="numeric" id="goal-sys" name="sys" min="90" max="200" value="'+goal.sys+'"></label><label class="l" for="goal-dia">Zielwert unten<input class="field" type="number" inputmode="numeric" id="goal-dia" name="dia" min="50" max="120" value="'+goal.dia+'"></label><button class="btn" type="submit" style="grid-column:auto">Speichern</button><p class="err" hidden></p></form>';
+  h+='<p class="hint">Grün: bis zum Zielwert. Gelb: darüber, bis '+(goal.sys+19)+'/'+(goal.dia+9)+', oder niedrig unter 90/60. Rot: ab '+(goal.sys+20)+'/'+(goal.dia+10)+'. Es zählt der schlechtere der beiden Werte. Den Zielwert legt am besten der Arzt fest. Die Farben sind eine Orientierung, kein ärztliches Urteil.</p></section>';
 
   var notes=state.notes[me]||[];
   h+='<section class="sec"><div class="sec-head"><h2>Meine Notizen</h2><span class="count">'+notes.length+'</span></div>';
@@ -1018,6 +1047,13 @@ document.addEventListener('submit',function(e){
   function val(n){return String(fd.get(n)||'').trim();}
   function refocus(id){var x=document.getElementById(id);if(x)x.focus();}
   if(kind==='login'){doLogin(f,fail);return;}
+  if(kind==='bpgoal'){
+    var gs=Number(val('sys')),gd=Number(val('dia'));
+    if(!(gs>=90&&gs<=200)||!(gd>=50&&gd<=120))return fail('Bitte einen Zielwert wie 140 und 90 eintragen.');
+    if(!state.bpgoal)state.bpgoal={};
+    state.bpgoal[state.me]={sys:gs,dia:gd};
+    commit();toast('Zielwert '+gs+'/'+gd+' gespeichert.');return;
+  }
   if(kind==='pw'){
     if(val('pw').length<8)return fail('Das Passwort braucht mindestens 8 Zeichen.');
     if(!sb)return fail('Gerade keine Verbindung.');
@@ -1048,7 +1084,7 @@ document.addEventListener('submit',function(e){
     if(!(sys>=60&&sys<=260)||!(dia>=30&&dia<=160))return fail('Bitte trag den oberen und den unteren Wert ein, zum Beispiel 130 und 85.');
     if(val('pulse')&&!(pulse>=30&&pulse<=220))return fail('Der Puls sollte zwischen 30 und 220 liegen.');
     var now=new Date();
-    bpOf(state.me).rows.push({id:uid(),date:today,time:z(now.getHours())+':'+z(now.getMinutes()),sys:sys,dia:dia,pulse:val('pulse')?pulse:0});
+    bpOf(state.me).rows.push({id:uid(),ts:Date.now(),date:today,time:z(now.getHours())+':'+z(now.getMinutes()),sys:sys,dia:dia,pulse:val('pulse')?pulse:0});
     f.reset();commit();toast('Messung eingetragen.');
   }else if(kind==='task'){
     var tw=fd.getAll('who');
@@ -1128,12 +1164,14 @@ function flatten(st){
   Object.keys(st.sit).forEach(function(key){put('sit-'+key,'sit',{key:key,nights:st.sit[key].nights,todo:st.sit[key].todo});});
   /* private entries: only ever my own */
   if(st.me&&st.bp[st.me])st.bp[st.me].rows.forEach(function(r){put(r.id,'bp',r,st.me,true);});
+  if(st.me&&st.bpgoal&&st.bpgoal[st.me])put('bpgoal-'+st.me,'bpgoal',st.bpgoal[st.me],st.me,true);
   if(st.me&&st.notes[st.me])st.notes[st.me].forEach(function(n){put(n.id,'note',n,st.me,true);});
   return m;
 }
 function removeFrom(st,id){
   Object.keys(LIST).forEach(function(k){st[LIST[k]]=st[LIST[k]].filter(function(x){return x.id!==id;});});
   if(id.indexOf('sit-')===0)delete st.sit[id.slice(4)];
+  if(id.indexOf('bpgoal-')===0&&st.bpgoal)delete st.bpgoal[id.slice(7)];
   Object.keys(st.bp).forEach(function(p){st.bp[p].rows=st.bp[p].rows.filter(function(x){return x.id!==id;});});
   Object.keys(st.notes).forEach(function(p){st.notes[p]=st.notes[p].filter(function(x){return x.id!==id;});});
 }
@@ -1142,6 +1180,7 @@ function applyRow(st,row){
   removeFrom(st,row.id);
   if(LIST[row.kind])st[LIST[row.kind]].push(d);
   else if(row.kind==='sit')st.sit[d.key]={nights:d.nights||{},todo:d.todo||[]};
+  else if(row.kind==='bpgoal'&&row.owner){if(!st.bpgoal)st.bpgoal={};st.bpgoal[row.owner]=d;}
   else if(row.kind==='bp'&&row.owner){if(!st.bp[row.owner])st.bp[row.owner]={rows:[]};st.bp[row.owner].rows.push(d);}
   else if(row.kind==='note'&&row.owner){if(!st.notes[row.owner])st.notes[row.owner]=[];st.notes[row.owner].push(d);}
 }
