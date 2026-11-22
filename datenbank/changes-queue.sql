@@ -27,15 +27,14 @@ declare
 begin
   if who is null then return null; end if;             -- changes made in the dashboard stay quiet
   if tg_op = 'DELETE' then r := old; else r := new; end if;
-  if r.private or r.kind not in ('appt','shop','meal','task','away','doc','wish') then return null; end if;
+  if r.private or r.kind not in ('appt','meal','task','away','doc','wish') then return null; end if;   -- no shopping list
 
   if tg_op = 'INSERT' then
     a := 'neu';
   elsif tg_op = 'DELETE' then
-    if r.kind in ('shop','wish') then return null; end if;
+    if r.kind = 'wish' then return null; end if;
     a := 'gelöscht';
   else
-    if r.kind = 'shop' then return null; end if;       -- ticking off groceries stays quiet
     o := old.data; n := new.data;
     if r.kind = 'task' and coalesce((o->>'done')::boolean, false) = false and coalesce((n->>'done')::boolean, false) then
       a := 'erledigt';
