@@ -311,7 +311,7 @@ button.sync{background:none;border:0;padding:0;cursor:pointer;text-decoration:un
 <script>
 (function(){
 'use strict';
-var APP_VERSION='22.11. 18:03';
+var APP_VERSION='24.11. 10:20';
 
 var PEOPLE=[{id:'d',name:'Dagmar'},{id:'j',name:'Jürgen'},{id:'n',name:'Nina'},{id:'p',name:'Philip'}];
 var PETS=[{name:'Ivie',kind:'Hund'},{name:'Frida',kind:'Hund'},{name:'Lilli',kind:'Schwein'}];
@@ -1513,9 +1513,31 @@ function checkPush(){
   if(!pushSupported()){pushInfo.checked=true;return;}
   swReady().then(function(reg){return reg.pushManager.getSubscription();}).then(function(s){
     pushInfo.checked=true;pushInfo.on=!!s&&Notification.permission==='granted';
-    if(pushInfo.on&&sb&&state.me)saveSub(s).catch(function(e){if(window.console)console.error('Mitteilungen',e);});
     if(view==='aufgaben')render(true);
+    if(Notification.permission==='granted'&&sb&&state.me)healPush(s);
   }).catch(function(){pushInfo.checked=true;});
+}
+/* Self-repair when the app opens: the phone may have lost its registration (the push service
+   reported it gone and it was removed from the list, or the browser renewed it). If notifications
+   are allowed and this phone is not on the list, register it again without asking. */
+var healing=false;
+function pushWanted(){try{return localStorage.getItem(KEY+':pushoff:'+state.me)!=='1';}catch(e){return true;}}
+function setPushWanted(on){try{if(on)localStorage.removeItem(KEY+':pushoff:'+state.me);else localStorage.setItem(KEY+':pushoff:'+state.me,'1');}catch(e){}}
+function healPush(s){
+  if(healing||!pushWanted())return;healing=true;
+  var onList=s?Promise.resolve(sb.from('push_subs').select('endpoint').eq('endpoint',s.endpoint)).then(function(r){return !r.error&&r.data&&r.data.length>0;}):Promise.resolve(false);
+  onList.then(function(ok){
+    if(ok)return;
+    return fetch(FN+'?key',{headers:{apikey:CFG.key}}).then(function(r){if(!r.ok)throw new Error('key '+r.status);return r.json();}).then(function(k){
+      return swReady().then(function(reg){
+        return dropOldSub(s).then(function(){
+          return reg.pushManager.subscribe({userVisibleOnly:true,applicationServerKey:b64ToBytes(k.publicKey)});
+        });
+      });
+    }).then(function(fresh){
+      return saveSub(fresh).then(function(){pushInfo.on=true;if(view==='aufgaben')render(true);});
+    });
+  }).catch(function(e){if(window.console)console.error('Mitteilungen',e);}).then(function(){healing=false;});
 }
 function pushSection(){
   var h='<section class="sec"><div class="sec-head"><h2>Mitteilungen aufs Handy</h2></div><div class="sit">';
@@ -1539,6 +1561,12 @@ function pushSection(){
   return h;
 }
 function setPushBusy(b){pushInfo.busy=b;if(view==='aufgaben')render(true);}
+/* replace this phone's old registration: forget it in the database too, so no stale entry stays behind */
+function dropOldSub(old){
+  if(!old)return Promise.resolve();
+  var gone=sb?Promise.resolve(sb.from('push_subs').delete().eq('endpoint',old.endpoint)).catch(function(){}):Promise.resolve();
+  return gone.then(function(){return old.unsubscribe();}).catch(function(){});
+}
 function withTimeout(promise,ms,msg){
   return new Promise(function(res,rej){
     var t=setTimeout(function(){rej({msg:msg});},ms);
@@ -1561,7 +1589,7 @@ function enablePush(){
     return withTimeout(fetch(FN+'?key',{headers:{apikey:CFG.key}}).then(function(r){if(!r.ok)throw {msg:'Der Erinnerungsdienst ist gerade nicht erreichbar.',detail:'HTTP '+r.status};return r.json();}),20000,'Der Erinnerungsdienst antwortet nicht. Bitte Internetverbindung prüfen.');
   }).then(function(k){
     return withTimeout(swReady().then(function(reg){
-      return reg.pushManager.getSubscription().then(function(old){return old?old.unsubscribe():null;}).then(function(){
+      return reg.pushManager.getSubscription().then(dropOldSub).then(function(){
         return reg.pushManager.subscribe({userVisibleOnly:true,applicationServerKey:b64ToBytes(k.publicKey)});
       });
     }),30000,'Das Handy hat die Anmeldung beim Mitteilungsdienst nicht abgeschlossen. Bitte App ganz schließen, neu öffnen und nochmal versuchen.');
@@ -1569,7 +1597,7 @@ function enablePush(){
     pushStep('Schritt 3 von 3: wird gespeichert …');
     return withTimeout(saveSub(s).catch(function(e){s.unsubscribe();throw e;}),20000,'Speichern dauert zu lange. Bitte Internetverbindung prüfen.');
   }).then(function(){
-    pushInfo.on=true;pushInfo.step='';setPushBusy(false);toast('Mitteilungen sind eingeschaltet.');
+    pushInfo.on=true;pushInfo.step='';setPushWanted(true);setPushBusy(false);toast('Mitteilungen sind eingeschaltet.');
   }).catch(function(e){
     pushInfo.step='';
     pushInfo.err=(e&&e.msg?e.msg:'Mitteilungen konnten nicht eingeschaltet werden.')+((e&&(e.detail||e.message))?' ('+(e.detail||e.message)+')':(e&&e.name?' ('+e.name+')':''));
@@ -1585,7 +1613,7 @@ function disablePush(quiet){
     var gone=sb?Promise.resolve(sb.from('push_subs').delete().eq('endpoint',s.endpoint)):Promise.resolve();
     return gone.then(function(){return s.unsubscribe();},function(){return s.unsubscribe();});
   }).then(function(){
-    pushInfo.on=false;if(!quiet){setPushBusy(false);toast('Mitteilungen auf diesem Gerät ausgeschaltet.');}
+    pushInfo.on=false;if(!quiet){setPushWanted(false);setPushBusy(false);toast('Mitteilungen auf diesem Gerät ausgeschaltet.');}
   }).catch(function(){if(!quiet){setPushBusy(false);toast('Das hat nicht geklappt. Bitte nochmal versuchen.');}});
 }
 function testPush(){
